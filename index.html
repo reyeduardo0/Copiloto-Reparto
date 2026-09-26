@@ -524,6 +524,7 @@ revoke all on public.copiloto_datos from anon;</pre>
               <div class="item"><div class="t">Qué es un grupo</div><div class="m">Paradas seguidas que puedes hacer a pie desde un mismo aparcamiento. La app te dice dónde aparcar (G1, G2…) y qué paquetes coger.</div></div>
               <div class="item"><div class="t">Durante el reparto</div><div class="m">«¿Dónde aparco?» · «Siguiente» · «Llévame» · «He aparcado» · «Entregada» o «Listo» · «Entregada la 25» · «Grupo terminado» · «Estoy en la puerta» (guarda la ubicación exacta)</div></div>
               <div class="item"><div class="t">Preguntas</div><div class="m">«¿Cuántas me quedan?» · «¿Qué paradas me quedan?» · «¿Qué paquetes cojo?» · «¿Cómo voy?»</div></div>
+              <div class="item"><div class="t">Si no puedes entregar</div><div class="m">«Ausente» · «No hay nadie en la 12» · «Dirección incorrecta» · «No hay acceso» · «Rechazado» · «No entregada» · «Déjala para luego» (pasa al final de la ruta) · «¿Qué tengo que devolver?»</div></div>
               <div class="item"><div class="t">Ruta que te queda</div><div class="m">«¿Qué ruta me queda?» · «Enséñame el recorrido en el mapa» · «¿Cuánto tiempo me queda?» · «¿A qué hora termino?» · «Añade la vuelta a la base» · «Terminando en casa» · «Sin vuelta» · «Llévame a casa»</div></div>
               <div class="item"><div class="t">Notas y sitios</div><div class="m">«Apunta que el código del portal es 1234» · «Nota para la parada 12: dejar en conserjería» · «Lee las notas» · «Guarda este aparcamiento como mercado»</div></div>
               <div class="item"><div class="t">Gasóleo</div><div class="m">«¿Dónde echo gasoil más barato?» · «Llévame a la gasolinera» · «He echado 48 litros a 1,43, 142350 kilómetros» · «¿Cuánto llevo gastado este mes?» · «¿Qué consumo tengo?»</div></div>
@@ -996,7 +997,7 @@ function renderRoute(){
     for(const s of st){
       const t=tramoOf(s.id);
       if(t&&t.idx!==lastT){lastT=t.idx;html+=`<div class="tramo-h" style="color:${COLORS[t.idx%COLORS.length]}">G${t.idx+1} · ${t.nogeo?"sin ubicación":t.park.name?esc(t.park.name):"aparcamiento sugerido"} · ${esc(t.zone)}</div>`}
-      const tag=s.cancel?'<span class="tag bad">Quitada</span>':s.geo==="approx"?'<span class="tag warn">Aproximada: revísala</span>':s.geo==="fail"?'<span class="tag bad">No encontrada</span>':s.geo==="pending"?'<span class="tag warn">Localizando</span>':s.geo==="manual"?'<span class="tag good">Fijada</span>':"";
+      const tag=s.fail?`<span class="tag bad">No entregada · ${esc(failTxt(s))}</span>`:s.cancel?'<span class="tag bad">Quitada</span>':s.geo==="approx"?'<span class="tag warn">Aproximada: revísala</span>':s.geo==="fail"?'<span class="tag bad">No encontrada</span>':s.geo==="pending"?'<span class="tag warn">Localizando</span>':s.geo==="manual"?'<span class="tag good">Fijada</span>':"";
       const nn=notesFor(s);
       html+=`<div class="item"><div class="t">${s.seq}. ${esc(s.addr)} ${s.pkgs>1?`<span class="tag">${s.pkgs} bultos</span>`:""}${s.bulky?'<span class="tag warn">Voluminoso</span>':""}${tag}</div>
         <div class="a">${hasLL(s)?`<button class="btn small" data-sv="${s.lat},${s.lon}" data-svl="${esc(s.addr)}">Ver portal</button>`:""}<button class="btn small" data-pick="${s.id}">Fijar en mapa</button><button class="btn small" data-edit="${s.id}">Editar</button><button class="btn small bad" data-rm="${s.id}">Quitar</button></div>
@@ -1024,7 +1025,7 @@ function renderLoad(){
   const T=route.tramos;
   if(!T.length){$("#loadPlan").innerHTML='<div class="panel empty">Calcula los grupos en la pestaña Ruta para ver el orden de carga.</div>';return}
   const Z=zones();const order=[...Z].reverse();let html="",step=1;
-  for(const z of order){const tz=T.filter(t=>t.zone===z);if(!tz.length)continue;
+  for(const z of order){const tz=T.filter(t=>t.zone===z&&t.stopIds.length);if(!tz.length)continue;
     tz.sort((a,b)=>b.idx-a.idx);
     html+=`<div class="panel"><h2>${step++}. ${esc(z)}</h2><div class="list">`+tz.map(t=>{const ss=t.stopIds.map(byId);const pk=ss.reduce((a,s)=>a+s.pkgs,0);
       return`<div class="item"><div class="t" style="color:${COLORS[t.idx%COLORS.length]}">G${t.idx+1} · paradas ${ss[0].seq}${ss.length>1?"–"+ss[ss.length-1].seq:""} · ${pk} bulto${pk>1?"s":""}${ss.some(s=>s.bulky)?' <span class="tag warn">Voluminoso</span>':""}</div>
@@ -1033,17 +1034,45 @@ function renderLoad(){
 }
 
 /* ================= DELIVERY ================= */
+/* ---------- entregas fallidas y reintentos ---------- */
+const FAIL={ausente:"Cliente ausente",acceso:"Sin acceso",direccion:"Dirección incorrecta",rechazado:"Rechazado",otro:"Otro motivo"};
+const failTxt=s=>s&&s.fail?(FAIL[s.fail.motivo]||FAIL.otro):"";
+let failMenu=null;
+/* marca la parada como no entregada (cuenta como hecha para avanzar, pero va a devoluciones). Devuelve la función para deshacer. */
+function failStop(s,motivo){
+  const prev={done:s.done,doneAt:s.doneAt,fail:s.fail},tr=tramoOf(s.id);let endSet=false;
+  s.done=true;s.doneAt=Date.now();s.fail={motivo:FAIL[motivo]?motivo:"otro",at:Date.now()};
+  if(tr&&tr.stopIds.every(id=>byId(id).done)&&!(route.times[tr.idx]&&route.times[tr.idx].end)){route.times[tr.idx]={...(route.times[tr.idx]||{}),end:Date.now()};endSet=true}
+  saveRoute();
+  return{endSet,tr,undo:()=>{s.done=prev.done;s.doneAt=prev.doneAt;if(prev.fail)s.fail=prev.fail;else delete s.fail;if(endSet&&route.times[tr.idx])delete route.times[tr.idx].end;saveRoute()}};
+}
+/* la pasa a un grupo extra al final de la ruta, con el mismo aparcamiento y zona de carga */
+function laterStop(s){
+  const tr=tramoOf(s.id);if(!tr)return null;
+  const pos=tr.stopIds.indexOf(s.id);tr.stopIds.splice(pos,1);
+  let endSet=false;if(tr.stopIds.length&&tr.stopIds.every(id=>byId(id).done)&&!(route.times[tr.idx]&&route.times[tr.idx].end)){route.times[tr.idx]={...(route.times[tr.idx]||{}),end:Date.now()};endSet=true}
+  const nt={idx:route.tramos.length,stopIds:[s.id],extra:true,retry:true,zone:tr.zone,nogeo:!hasLL(s)&&!tr.park};
+  if(hasLL(s))nt.park=parkingFor([s]);else if(tr.park)nt.park={...tr.park};
+  route.tramos.push(nt);s.retry=(s.retry||0)+1;saveRoute();
+  return{undo:()=>{const i=route.tramos.indexOf(nt);if(i>=0){route.tramos.splice(i,1);route.tramos.forEach((t,k)=>t.idx=k)}
+    tr.stopIds.splice(pos,0,s.id);s.retry=Math.max(0,(s.retry||1)-1);if(endSet&&route.times[tr.idx])delete route.times[tr.idx].end;saveRoute()}};
+}
+const failedStops=()=>route.stops.filter(s=>s.fail);
 function currentTramo(){return route.tramos.find(t=>t.stopIds.some(id=>{const s=byId(id);return s&&!s.done}))}
 function renderDeliv(refit=true){
   const col=$("#delivCol");
   if(!route.tramos.length){col.innerHTML='<div class="panel empty">Calcula los grupos en la pestaña Ruta para empezar el reparto.</div>';drawDelivMap(null,refit);return}
   const t=currentTramo();
   if(!t)RV=null;else refreshRemainingIfStale();
-  if(!t){col.innerHTML=`<div class="panel"><h2>Ruta terminada</h2><p class="help">Todas las paradas están marcadas como entregadas. Cierra la jornada en la pestaña Cuentas.</p></div>`;drawDelivMap(null,refit);return}
+  if(!t){const F=failedStops(),bp=parseLL(S.base),fk=F.reduce((a,x)=>a+x.pkgs,0);
+    col.innerHTML=`<div class="panel"><h2>Ruta terminada</h2><p class="help">${route.stops.filter(x=>x.done&&!x.fail&&!x.cancel).length} entregadas${F.length?` · ${F.length} no entregada${F.length>1?"s":""}`:""}. Cierra la jornada en la pestaña Cuentas.</p>
+      ${F.length?`<h3>Para devolver en la base: ${fk} bulto${fk>1?"s":""}</h3><div class="list">${F.map(x=>`<div class="item"><div class="t">${x.seq}. ${esc(x.addr)}</div><div class="m">${esc(failTxt(x))} · ${x.pkgs} bulto${x.pkgs>1?"s":""}</div></div>`).join("")}</div>`:""}
+      ${bp?`<div class="inline" style="margin-top:12px"><button class="btn primary" data-go="${bp.lat},${bp.lon}">Ir a la base</button><button class="btn" data-waze="${bp.lat},${bp.lon}">Waze</button></div>`:""}</div>`;drawDelivMap(null,refit);return}
   const ss=t.stopIds.map(byId),tm=route.times[t.idx]||{},pk=ss.reduce((a,s)=>a+s.pkgs,0);
   const dist=here&&t.park?m(here,t.park):null;
   const doneN=route.stops.filter(s=>s.done).length;
-  let html=(RV?remainingPanel():`<button class="btn" data-rvshow="1" style="width:100%">Ver la ruta que me queda y cuánto tardo</button>`)+`<div class="status">${doneN} de ${route.stops.length} paradas hechas · grupo ${t.idx+1} de ${route.tramos.length}</div>
+  const nF=failedStops().length;
+  let html=(RV?remainingPanel():`<button class="btn" data-rvshow="1" style="width:100%">Ver la ruta que me queda y cuánto tardo</button>`)+`<div class="status">${doneN} de ${route.stops.length} paradas hechas${nF?` (${nF} no entregada${nF>1?"s":""})`:""} · grupo ${t.idx+1} de ${route.tramos.length}${t.retry?" · reintento":""}</div>
   <div class="totem">
     <div class="who">${t.nogeo?"Parada sin ubicación":t.park.name?esc(t.park.name)+" · "+esc(t.park.type||""):"Aparcamiento sugerido: busca sitio lo más cerca posible"}</div>
     <div class="price">G${t.idx+1}<small>${ss.length} paradas</small></div>
@@ -1057,13 +1086,15 @@ function renderDeliv(refit=true){
   </div>`;
   for(const s of ss){const nn=notesFor(s);
     html+=`<div class="stop ${s.done?"done":""}"><div class="seq" style="color:${COLORS[t.idx%COLORS.length]}">${s.seq}</div>
-      <div><div class="addr">${esc(s.addr)}</div><div class="status">${s.pkgs} bulto${s.pkgs>1?"s":""}${s.bulky?" · voluminoso":""}${hasLL(s)&&here?" · a "+Math.round(m(here,s))+" m de ti":""}</div>
+      <div><div class="addr">${esc(s.addr)}${s.fail?` <span class="tag bad">No entregada · ${esc(failTxt(s))}</span>`:""}${s.retry&&!s.done?' <span class="tag warn">Reintento</span>':""}</div><div class="status">${s.pkgs} bulto${s.pkgs>1?"s":""}${s.bulky?" · voluminoso":""}${hasLL(s)&&here?" · a "+Math.round(m(here,s))+" m de ti":""}</div>
       ${nn.map(n=>`<div class="note">${esc(n.text)} ${n.photo?`<button class="btn small" data-photo="${n.id}">Ver portal</button>`:""}</div>`).join("")}</div>
       <div class="acts">
         <button class="btn ${s.done?"":"good"}" data-done="${s.id}">${s.done?"Deshacer":"Entregada"}</button>
+        ${s.done?"":`<button class="btn bad" data-failmenu="${s.id}">No entregada</button>`}
         <button class="btn small" data-fixhere="${s.id}">Estoy en la puerta: fijar ubicación</button>
         ${hasLL(s)?`<button class="btn small" data-sv="${s.lat},${s.lon}" data-svl="${esc(s.addr)}">Ver portal</button>`:""}
         <button class="btn small" data-addnote="${s.id}">Añadir nota</button>
+        ${failMenu===s.id&&!s.done?`<div class="inline" style="width:100%;padding-top:6px;border-top:1px solid var(--line)"><b style="width:100%">¿Por qué no se ha entregado?</b>${Object.entries(FAIL).map(([k,v])=>`<button class="btn small bad" data-fail="${s.id}|${k}">${v}</button>`).join("")}<button class="btn small primary" data-later="${s.id}">Reintentar más tarde</button><button class="btn small" data-failmenu="">Cancelar</button></div>`:""}
       </div></div>`}
   const up=route.tramos.slice(t.idx).filter(x=>x.park&&x.stopIds.some(id=>!byId(id).done)).slice(0,6).map(x=>x.park);
   html+=`<div class="inline"><button class="btn" data-savespot="1">Guardar donde he aparcado</button>${up.length>1?`<button class="btn" data-multi="1">Próximos ${up.length} aparcamientos en Google Maps</button>`:""}${t.park?`<button class="btn" data-wz="${t.park.lat},${t.park.lon}">Tráfico Waze</button>`:""}</div>`;
@@ -1212,12 +1243,13 @@ function dayStats(){
   const starts=Object.values(route.times).map(t=>t.arrive).filter(Boolean),ends=done.map(s=>s.doneAt).filter(Boolean);
   const hours=starts.length&&ends.length?(Math.max(...ends)-Math.min(...starts))/3600000:null;
   const saved=r?Math.max(0,r.base-r.drive):0;
-  return{stops:route.stops.length,done:done.length,tramos:route.tramos.length,drive:r?r.drive:0,base:r?r.base:0,walk:r?r.walk:0,saved,savedEur:saved*consumption()/100*fuelPrice(),walkMin,perHour:hours&&hours>0.1?done.length/hours:null};
+  return{stops:route.stops.length,done:done.length,delivered:done.filter(s=>!s.fail&&!s.cancel).length,failed:done.filter(s=>s.fail).length,tramos:route.tramos.length,drive:r?r.drive:0,base:r?r.base:0,walk:r?r.walk:0,saved,savedEur:saved*consumption()/100*fuelPrice(),walkMin,perHour:hours&&hours>0.1?done.length/hours:null};
 }
 function renderStats(){
   const d=dayStats();
   $("#dayStats").innerHTML=`
-    <div class="stat"><b>${d.done}/${d.stops}</b><span>Paradas entregadas</span></div>
+    <div class="stat"><b>${d.delivered}/${d.stops}</b><span>Paradas entregadas</span></div>
+    <div class="stat"><b>${d.failed}</b><span>No entregadas (a devolver)</span></div>
     <div class="stat"><b>${d.tramos}</b><span>Grupos (veces que aparcas)</span></div>
     <div class="stat"><b>${eur(d.drive,1)} km</b><span>Conducción estimada</span></div>
     <div class="stat"><b>${eur(d.saved,1)} km</b><span>Ahorrados frente a puerta a puerta</span></div>
@@ -1226,7 +1258,7 @@ function renderStats(){
     <div class="stat"><b>${d.walkMin!=null?eur(d.walkMin,0)+" min":"—"}</b><span>Media por grupo</span></div>
     <div class="stat"><b>${d.perHour!=null?eur(d.perHour,1):"—"}</b><span>Paradas por hora</span></div>`;
   renderFuelStats();renderLogs();
-  $("#histList").innerHTML=hist.length?[...hist].reverse().map(h=>`<div class="item"><div class="t">${new Date(h.date).toLocaleDateString("es-ES",{weekday:"short",day:"numeric",month:"short"})} · ${h.done}/${h.stops} paradas · ${h.tramos} grupos</div>
+  $("#histList").innerHTML=hist.length?[...hist].reverse().map(h=>`<div class="item"><div class="t">${new Date(h.date).toLocaleDateString("es-ES",{weekday:"short",day:"numeric",month:"short"})} · ${h.delivered??h.done}/${h.stops} paradas entregadas${h.failed?" · "+h.failed+" no entregada"+(h.failed>1?"s":""):""} · ${h.tramos} grupos</div>
     <div class="m">${eur(h.drive,1)} km conduciendo · ${eur(h.saved,1)} km ahorrados (${eur(h.savedEur)} €) · ${eur(h.walk,1)} km a pie${h.perHour?" · "+eur(h.perHour,1)+" paradas/h":""}</div></div>`).join(""):'<div class="empty">Aún no has cerrado ninguna jornada.</div>';
 }
 function archiveDay(){const d=dayStats();hist.push({date:route.date,...d});if(hist.length>400)hist.shift();ls.set(K.hist,hist);route.closed=true;saveRoute()}
@@ -1399,8 +1431,13 @@ $("#wipe").addEventListener("click",async()=>{if(!confirm("Se borrarán ajustes,
 
 /* ================= global click delegation ================= */
 document.addEventListener("click",async e=>{
-  const t=e.target.closest("[data-go],[data-waze],[data-fill],[data-sid],[data-photo],[data-dellog],[data-save-pos],[data-pick],[data-edit],[data-rm],[data-arrive],[data-finish],[data-done],[data-fixhere],[data-addnote],[data-savespot],[data-editnote],[data-delnote],[data-delspot]");
+  const t=e.target.closest("[data-failmenu],[data-fail],[data-later],[data-go],[data-waze],[data-fill],[data-sid],[data-photo],[data-dellog],[data-save-pos],[data-pick],[data-edit],[data-rm],[data-arrive],[data-finish],[data-done],[data-fixhere],[data-addnote],[data-savespot],[data-editnote],[data-delnote],[data-delspot]");
   if(!t)return;const d=t.dataset;
+  if(d.failmenu!==undefined){failMenu=d.failmenu||null;renderDeliv(false);return}
+  if(d.fail){const[id,mo]=d.fail.split("|");const s=byId(id);if(!s)return;failMenu=null;const r=failStop(s,mo);
+    pushUndo(r.undo,"la parada "+s.seq+" no entregada");renderDeliv(r.endSet);toast("Parada "+s.seq+": "+FAIL[mo].toLowerCase()+". Queda para devolver.",true);return}
+  if(d.later){const s=byId(d.later);if(!s)return;failMenu=null;const r=laterStop(s);if(!r)return;
+    pushUndo(r.undo,"el reintento de la parada "+s.seq);renderDeliv(true);toast("Parada "+s.seq+" pasa al final de la ruta",true);return}
   if(d.go){const[a,b]=d.go.split(",");window.open(navUrl({lat:a,lon:b}),"_blank")}
   else if(d.waze){const[a,b]=d.waze.split(",");window.open(navUrl({lat:a,lon:b},"waze"),"_blank")}
   else if(d.fill){const s=cache&&cache.list.find(x=>x.id===d.fill);if(s){$("#fStation").value=s.brand+" · "+s.addr+" · "+s.town;$("#fPrice").value=(s.price-discountFor(s.brand)).toFixed(3);$("#fLit").value=S.liters;updTotal()}showView("v-stats");$("#fOdo").focus()}
@@ -1419,12 +1456,12 @@ document.addEventListener("click",async e=>{
     const changed=tr.stopIds.map(byId).filter(s=>s&&!s.done);changed.forEach(s=>{s.done=true;s.doneAt=now});route.times[i]={...(prev||{}),end:now};saveRoute();
     pushUndo(()=>{changed.forEach(s=>{s.done=false;s.doneAt=null});if(prev)route.times[i]=prev;else delete route.times[i];saveRoute()},"el cierre del grupo "+(i+1));
     renderDeliv(true);toast("Grupo G"+(i+1)+" terminado",true)}
-  else if(d.done){const s=byId(d.done);if(!s)return;const tr=tramoOf(s.id);
+  else if(d.done){const s=byId(d.done);if(!s)return;const tr=tramoOf(s.id);failMenu=null;
     if(!s.done){s.done=true;s.doneAt=Date.now();let endSet=false;
       if(tr&&tr.stopIds.every(id=>byId(id).done)){route.times[tr.idx]={...(route.times[tr.idx]||{}),end:Date.now()};endSet=true}
       saveRoute();pushUndo(()=>{s.done=false;s.doneAt=null;if(endSet&&route.times[tr.idx])delete route.times[tr.idx].end;saveRoute()},"la entrega de la parada "+s.seq);
       renderDeliv(endSet);toast(endSet?"Grupo G"+(tr.idx+1)+" terminado":"Parada "+s.seq+" entregada",true)}
-    else{s.done=false;s.doneAt=null;delete s.cancel;if(tr&&route.times[tr.idx])delete route.times[tr.idx].end; /* el grupo vuelve a estar abierto */
+    else{s.done=false;s.doneAt=null;delete s.cancel;delete s.fail;if(tr&&route.times[tr.idx])delete route.times[tr.idx].end; /* el grupo vuelve a estar abierto */
       saveRoute();renderDeliv(false);toast("Parada "+s.seq+" pendiente otra vez")}}
   else if(d.fixhere){if(!here){toast("Aún no hay señal GPS");return}const s=byId(d.fixhere);setStopLocation(s,here);const n=notes.find(x=>x.key===normKey(s.addr));if(n){n.lat=here.lat;n.lon=here.lon;ls.set(K.notes,notes)}toast("Ubicación exacta guardada para próximas veces");renderDeliv(false)}
   else if(d.addnote){const s=byId(d.addnote);const v=prompt("Nota para "+s.addr+" (código de portal, conserjería…)");if(v&&v.trim()){await saveNote(s.addr,v.trim(),here&&m(here,s)<60?here:(hasLL(s)?s:null),null);toast("Nota guardada");renderDeliv(false)}}
@@ -1656,16 +1693,33 @@ function noParkMsg(t){const s=t.stopIds.map(byId).find(x=>x&&!x.done);
   return`La parada ${s?s.seq+", "+s.addr:""} no está localizada en el mapa, así que no sé dónde aparcar. Fíjala tocando el mapa en la pestaña Ruta.`}
 function vGoPark(){const t=currentTramo();if(!t){say(noGroupMsg());return}if(!t.park){say(noParkMsg(t));return}
   const ok=openNav(t.park,"G"+(t.idx+1));say(`Vamos al grupo ${t.idx+1}${t.park.name?", "+t.park.name:""}.${ok?"":" Pulsa el botón para abrir la navegación."}`)}
+function vFail(seq,motivo){
+  const s=targetStop(seq);if(!s){say(seq?"No encuentro la parada "+seq+".":"No hay paradas pendientes.");return}
+  if(s.done&&!s.fail){say(`La parada ${s.seq} estaba marcada como entregada. Si no lo está, di «deshacer» o desmárcala en la pantalla.`);return}
+  const r=failStop(s,motivo);pushUndo(r.undo,"la parada "+s.seq+" no entregada");
+  if(active==="v-deliv")renderDeliv(r.endSet);else refreshActive();const tr=tramoOf(s.id);
+  say(`Parada ${s.seq}: ${FAIL[s.fail.motivo].toLowerCase()}. Queda para devolver.`+(tr?afterDoneMsg(tr):""));
+}
+function vLater(seq){
+  const s=targetStop(seq);if(!s){say(seq?"No encuentro la parada "+seq+".":"No hay paradas pendientes.");return}
+  if(s.done){say(`La parada ${s.seq} ya está cerrada.`);return}
+  const tr=tramoOf(s.id);const r=laterStop(s);if(!r){say("Primero calcula los grupos.");return}
+  pushUndo(r.undo,"el reintento de la parada "+s.seq);if(active==="v-deliv")renderDeliv(true);else refreshActive();
+  say(`La parada ${s.seq}, ${s.addr}, pasa al final de la ruta para intentarlo luego.`+(tr?afterDoneMsg(tr):""));
+}
+function vReturns(){const F=failedStops();if(!F.length){say("No tienes nada para devolver.");return}
+  const pk=F.reduce((a,x)=>a+x.pkgs,0);say(`Tienes ${F.length} parada${F.length>1?"s":""} sin entregar, ${pk} bulto${pk>1?"s":""} para devolver: ${F.slice(0,6).map(x=>x.seq+", "+failTxt(x).toLowerCase()).join(". ")}.`)}
 function vRemaining(){if(!route.stops.length){say("Todavía no hay paradas hoy. Para añadir una, di «añade parada» y la dirección.");return}
   const left=route.stops.filter(s=>!s.done),pk=left.reduce((a,s)=>a+s.pkgs,0),tl=route.tramos.filter(t=>t.stopIds.some(id=>!byId(id).done)).length;
-  say(left.length?`Te quedan ${left.length} paradas y ${pk} bultos${route.tramos.length?", en "+tl+" grupos":""}. Llevas ${route.stops.length-left.length} entregadas.`:"Has entregado todas las paradas.")}
+  const nf=failedStops().length,dl=route.stops.filter(s=>s.done&&!s.fail&&!s.cancel).length;
+  say(left.length?`Te quedan ${left.length} paradas y ${pk} bultos${route.tramos.length?", en "+tl+" grupos":""}. Llevas ${dl} entregadas${nf?" y "+nf+" sin entregar":""}.`:`Has terminado todas las paradas${nf?"; "+nf+" quedan para devolver":""}.`)}
 function vNext(){const t=currentTramo();if(!t){say(noGroupMsg());return}
   const d=here&&t.park?hav(here,t.park)*S.factor:null;
   say(`Grupo ${t.idx+1}: ${t.park&&t.park.name?"aparca en "+t.park.name:"aparcamiento sugerido, busca sitio cerca"}${d!=null?", a "+distSpeech(d):""}. Coge los bultos de ${t.zone}. ${tramoBrief(t)}`)}
 function vZone(){const t=currentTramo();if(!t){say(noGroupMsg());return}const pk=t.stopIds.map(byId).filter(s=>!s.done).reduce((a,s)=>a+s.pkgs,0);
   say(`Grupo ${t.idx+1}: ${pk} bulto${pk>1?"s":""} en ${t.zone}.`)}
 function vSummary(){const d=dayStats();if(!d.stops){say("Hoy todavía no hay paradas.");return}
-  say(`Llevas ${d.done} de ${d.stops} paradas.${d.perHour?" Vas a "+eur(d.perHour,1)+" paradas por hora.":""}${d.walkMin?" Cada grupo te lleva de media "+Math.round(d.walkMin)+" minutos.":""} Con los grupos te ahorras unos ${eur(d.saved,1)} kilómetros, unos ${eur(d.savedEur)} euros de gasóleo.`)}
+  say(`Llevas ${d.done} de ${d.stops} paradas${d.failed?", "+d.failed+" sin entregar":""}.${d.perHour?" Vas a "+eur(d.perHour,1)+" paradas por hora.":""}${d.walkMin?" Cada grupo te lleva de media "+Math.round(d.walkMin)+" minutos.":""} Con los grupos te ahorras unos ${eur(d.saved,1)} kilómetros, unos ${eur(d.savedEur)} euros de gasóleo.`)}
 function vSpent(){const ym=hoyLocal().slice(0,7),mo=logs.filter(l=>l.date.startsWith(ym));
   if(!mo.length){say("Este mes no has anotado repostajes.");return}const sp=mo.reduce((a,l)=>a+l.liters*l.price,0),li=mo.reduce((a,l)=>a+l.liters,0);
   say(`Este mes llevas ${eur(sp)} euros en gasóleo, ${eur(li,0)} litros en ${mo.length} repostaje${mo.length>1?"s":""}, a una media de ${priceSpeech(sp/li)}.`)}
@@ -1711,6 +1765,16 @@ function route_(t){
   if(/^(repite|repitelo|repitemelo|otra vez|que has dicho|como|perdona|no te he oido|no te oi)$/.test(t))return()=>say(lastReply||"Todavía no he dicho nada.");
   if(/(deshacer|deshaz|anula|borra lo ultimo|me he equivocado|me equivoque|eso no|no era eso)/.test(t))return vUndo;
   if(/(ayuda|que puedo decir|que sabes hacer|comandos|que hago|como funciona|como se usa|no se que decir)/.test(t))return vHelp;
+  /* entregas fallidas, reintentos y devoluciones */
+  if(/((que|cuanto|cuantos|cuantas|dime|lista).*(devolver|devoluciones|sin entregar|no entregad)|lista de devoluciones)/.test(t))return vReturns;
+  {const nm=(t.match(/\b(?:parada(?: numero)?|la|el) (\d{1,4})\b/)||t.match(/^(\d{1,4})\b/)||[])[1]||null;
+   if(/(para (luego|despues|mas tarde|el final|la vuelta)|mas tarde|reintent|(vuelvo|paso|pasare|volvere) (luego|despues|mas tarde|al final)|lo intento (luego|despues)|otro intento|al final de la ruta)/.test(t)&&!/(ruta que|recorrido)/.test(t))return()=>vLater(nm);
+   const mo=/(ausente|no (hay|habia|esta|estaba) nadie|no (contesta|abre|responde)\b|no (esta|estaba) (el cliente|en casa)|nadie en casa)/.test(t)?"ausente"
+     :/(direccion (incorrecta|equivocada|erronea|mal)|no existe (la direccion|el portal|ese numero)|no encuentro (la direccion|el portal)|no existe$)/.test(t)?"direccion"
+     :/(rechaz|no (lo|la) quiere|no acepta|no quiere el paquete)/.test(t)?"rechazado"
+     :/(sin acceso|no (hay|tengo) acceso|no puedo (entrar|acceder|pasar)|(portal|puerta|urbanizacion|esta|estaba) cerrad[ao]|no me abren|no se puede (acceder|entrar))/.test(t)?"acceso"
+     :/(no (?:esta |estaba |ha sido |se ha )?entregad[ao]|no (la |lo )?he podido entregar|no se ha podido entregar|no (la |lo )?pude entregar|entrega fallida|fallida|devolucion|para devolver)/.test(t)?"otro":null;
+   if(mo)return()=>vFail(nm,mo);}
   /* ruta que queda: recorrido en el mapa, tiempo y final en base o casa */
   if(/^(?:llevame|navega|guiame|vamos|vuelvo|volvemos|me voy|ir|vete)(?: (?:a|hasta|hacia|para))?(?: (?:la|mi))? (?:casa|base|estacion|amazon|almacen|nave)$/.test(t))return()=>vGoFinal(t);
   const RQ=/\b(ruta|recorrido|camino|trayecto)\b/.test(t)&&/(queda|falta|restante|pendiente|ensena|muestra|\bver\b|\bveo\b|cual es|dime|como es|cuanto|por hacer|por cumplir|por entregar|en el mapa|que tengo)/.test(t)&&!/(calcul|organiz|ordena|recalcul|prepar|genera|agrupa|monta)/.test(t);
@@ -1813,6 +1877,7 @@ async function aiRun(a){
     case"anadir_parada":{const d=str(g.direccion,160);if(!d){say("No he entendido la dirección.");return}
       vAddStop(int(g.numero),asTail(d),{pk:int(g.bultos)||1,bulky:g.voluminoso===true});return}
     case"marcar_entregada":return vDone(int(g.numero));
+    case"no_entregada":{const n=int(g.numero);if(g.mas_tarde===true)return vLater(n);return vFail(n,FAIL[g.motivo]?g.motivo:"otro")}
     case"quitar_parada":{const n=int(g.numero);if(n)return vRemove(n);say("¿Qué número de parada quito?");return}
     case"anotar_nota":{const t=str(g.texto,300);if(t)return vNote(int(g.numero),asTail(t));return}
     case"anotar_repostaje":{const l=Number(g.litros),p=Number(g.precio);
@@ -1826,7 +1891,7 @@ async function aiRun(a){
     case"calcular_grupos":return vCalc();
     case"consultar":{const q=g.que,n=int(g.numero);
       return({siguiente:vNext,cuantas_quedan:vRemaining,lista_paradas:vList,que_paquetes_coger:vZone,resumen_dia:vSummary,
-        gasto_gasoil_mes:vSpent,consumo:vCons,gasolinera_barata:()=>vFuel(false),notas_parada:()=>vReadNotes(n)}[q]||(()=>say("No sé responder a eso todavía.")))()}
+        gasto_gasoil_mes:vSpent,consumo:vCons,gasolinera_barata:()=>vFuel(false),notas_parada:()=>vReadNotes(n),devoluciones:vReturns}[q]||(()=>say("No sé responder a eso todavía.")))()}
     case"navegar":{if(g.destino==="gasolinera")return vFuel(true);if(g.destino==="base"||g.destino==="casa")return vGoFinal(g.destino);return g.app==="waze"?vWaze("llevame waze"):vGoPark()}
     case"mapa":{const v=g.vista;if(v==="satelite")return vMapType("satellite");if(v==="hibrido")return vMapType("hybrid");if(v==="mapa")return vMapType("roadmap");
       if(v==="trafico_on")return vTraffic(true);if(v==="trafico_off")return vTraffic(false);if(v==="portal")return vStreet(int(g.numero));return}

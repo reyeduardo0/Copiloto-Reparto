@@ -32,6 +32,7 @@ Reglas:
 - Direcciones: escríbelas limpias y con mayúscula inicial (por ejemplo "Calle Mayor 12"), sin palabras de relleno.
 - Si pregunta algo sobre su día (qué le queda, dónde aparcar, gasto…), usa la herramienta "consultar": la app responde con sus datos reales.
 - Si pregunta por la ruta o el recorrido que le queda, cuánto tiempo le falta o a qué hora terminará, usa "ruta_restante" (con final "base" o "casa" si lo menciona).
+- Si dice que no ha podido entregar (no hay nadie, no le abren, dirección mal, lo rechazan), usa "no_entregada" con el motivo; si dice que volverá luego, con mas_tarde true.
 - Si la frase no tiene que ver con el reparto o no es clara, no llames a ninguna herramienta y responde con UNA pregunta corta en español para aclararlo.
 - Si solo saluda o da las gracias, responde con una frase breve y amable.
 - Respuestas de texto: máximo 20 palabras, en español de España, sin emojis. Va conduciendo.
@@ -46,6 +47,11 @@ const HERRAMIENTAS = [
       voluminoso: { type: "boolean", description: "Si dice que es grande o voluminoso" } }, required: ["direccion"] } },
   { name: "marcar_entregada", description: "Marca una parada como entregada. Sin número = la parada actual.",
     input_schema: { type: "object", properties: { numero: { type: "integer" } } } },
+  { name: "no_entregada", description: "La entrega no se ha podido hacer (ausente, sin acceso, dirección incorrecta, rechazado...) o la deja para reintentar más tarde. Sin número = la parada actual.",
+    input_schema: { type: "object", properties: {
+      numero: { type: "integer", description: "Número de parada, solo si lo dice" },
+      motivo: { type: "string", enum: ["ausente", "acceso", "direccion", "rechazado", "otro"] },
+      mas_tarde: { type: "boolean", description: "true si quiere reintentarla más tarde en vez de darla por no entregada" } } } },
   { name: "quitar_parada", description: "Quita una parada de la ruta.",
     input_schema: { type: "object", properties: { numero: { type: "integer" } }, required: ["numero"] } },
   { name: "anotar_nota", description: "Guarda una nota para una dirección (código de portal, conserjería, horario, perro...). Sin número = la parada actual.",
@@ -64,7 +70,7 @@ const HERRAMIENTAS = [
   { name: "consultar", description: "Pregunta sobre su día. La app responde con datos reales.",
     input_schema: { type: "object", properties: { que: { type: "string", enum: [
       "siguiente", "cuantas_quedan", "lista_paradas", "que_paquetes_coger", "resumen_dia",
-      "gasto_gasoil_mes", "consumo", "gasolinera_barata", "notas_parada"] },
+      "gasto_gasoil_mes", "consumo", "gasolinera_barata", "notas_parada", "devoluciones"] },
       numero: { type: "integer" } }, required: ["que"] } },
   { name: "navegar", description: "Abre la navegación.",
     input_schema: { type: "object", properties: {
