@@ -401,6 +401,8 @@ body:has(.sv-view[style*="flex"]) .vpanel{z-index:3250;bottom:calc(16px + env(sa
               <ol class="help" style="padding-left:20px">
                 <li>Entra en <b>platform.claude.com</b>, crea una cuenta, añade saldo (con 5 $ tienes para mucho tiempo) y en «API Keys» crea una clave.</li>
                 <li>En Supabase, abre tu proyecto → <b>Edge Functions → Secrets</b> y añade un secreto llamado <b>ANTHROPIC_API_KEY</b> con esa clave. La clave queda solo en el servidor: nunca la pongas en la app.</li>
+                <li>Añade también el secreto <b>IA_CORREOS_PERMITIDOS</b> con tu correo (varios, separados por comas). Solo esas cuentas podrán usar la IA y gastar tu saldo.</li>
+                <li>En <b>Authentication → Sign In / Providers</b>, cuando ya tengas tu cuenta creada, desactiva «Allow new users to sign up» para que nadie más pueda registrarse.</li>
                 <li>Opcional: añade <b>IA_LIMITE_DIARIO</b> con el máximo de consultas al día (por defecto, 300).</li>
                 <li>Vuelve aquí y pulsa «Probar la IA».</li>
               </ol></details>
@@ -595,7 +597,9 @@ const ls={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}
 let S=Object.assign({},DEFAULTS,ls.get(K.set,{}));
 let logs=ls.get(K.logs,[]), cache=ls.get(K.st,null), geo=ls.get(K.geo,{}), notes=ls.get(K.notes,[]), spots=ls.get(K.spots,[]), hist=ls.get(K.hist,[]);
 let route=ls.get(K.route,null)||newRoute();
-function newRoute(){return{date:new Date().toISOString().slice(0,10),stops:[],tramos:[],times:{}}}
+/* fecha local (Madrid), no UTC: entre las 00:00 y las 02:00 la UTC es todavía el día anterior */
+function hoyLocal(){const d=new Date();d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,10)}
+function newRoute(){return{date:hoyLocal(),stops:[],tramos:[],times:{}}}
 const saveRoute=()=>ls.set(K.route,route);
 
 const idb=(()=>{let p;function db(){if(!p)p=new Promise((res,rej)=>{const r=indexedDB.open("dc",1);r.onupgradeneeded=()=>r.result.createObjectStore("photos");r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});return p}
@@ -629,7 +633,7 @@ async function compress(file,max=1400){return new Promise(res=>{const img=new Im
   img.onerror=()=>res(null);img.src=u})}
 function showPhoto(id){idb.get(id).then(d=>{if(!d){toast("Foto no disponible");return}const v=$("#photoView");v.querySelector("img").src=d;v.style.display="grid"})}
 function download(name,content,type){const b=new Blob([content],{type});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();a.remove()}
-function fuelPrice(){const now=new Date().toISOString().slice(0,7);const ml=logs.filter(l=>l.date.startsWith(now));
+function fuelPrice(){const now=hoyLocal().slice(0,7);const ml=logs.filter(l=>l.date.startsWith(now));
   if(ml.length){const L=ml.reduce((a,l)=>a+l.liters,0);return ml.reduce((a,l)=>a+l.liters*l.price,0)/L}
   if(cache&&cache.list.length){const p=cache.list.map(s=>s.price).sort((a,b)=>a-b);return p[Math.floor(p.length/2)]}
   return 1.45}
@@ -1166,7 +1170,7 @@ $("#saveLog").addEventListener("click",async()=>{
   logs.push(e);ls.set(K.logs,logs);["#fOdo","#fLit","#fStation"].forEach(s=>$(s).value="");$("#fPhoto").value="";$("#fDate").value=nowLocal();updTotal();renderStats();toast("Repostaje guardado");
 });
 function renderFuelStats(){
-  const ym=new Date().toISOString().slice(0,7),mo=logs.filter(l=>l.date.startsWith(ym));
+  const ym=hoyLocal().slice(0,7),mo=logs.filter(l=>l.date.startsWith(ym));
   const spent=mo.reduce((a,l)=>a+l.liters*l.price,0),lit=mo.reduce((a,l)=>a+l.liters,0),rc=realConsumption(),ap=lit?spent/lit:fuelPrice();
   $("#fuelStats").innerHTML=`<div class="stat"><b>${eur(spent)} €</b><span>Gastado en gasóleo</span></div>
     <div class="stat"><b>${eur(lit,0)} L</b><span>Litros repostados</span></div>
@@ -1183,7 +1187,7 @@ function renderLogs(){
 $("#exportCsv").addEventListener("click",()=>{
   const n=v=>isFinite(v)?String(v).replace(".",","):"";
   const rows=[["Fecha","Km","Litros","Precio €/L","Total €","Lleno","Gasolinera"]].concat([...logs].sort((a,b)=>a.date.localeCompare(b.date)).map(l=>[l.date.replace("T"," "),n(l.odo),n(l.liters),n(l.price),n(Math.round(l.liters*l.price*100)/100),l.full?"Sí":"No",'"'+(l.station||"").replace(/"/g,'""')+'"']));
-  download("repostajes-"+new Date().toISOString().slice(0,10)+".csv","\ufeff"+rows.map(r=>r.join(";")).join("\r\n"),"text/csv;charset=utf-8");
+  download("repostajes-"+hoyLocal()+".csv","\ufeff"+rows.map(r=>r.join(";")).join("\r\n"),"text/csv;charset=utf-8");
 });
 
 /* ================= PLACES ================= */
@@ -1253,7 +1257,7 @@ $("#importJson").addEventListener("change",async e=>{const f=e.target.files[0];i
   try{const j=JSON.parse(await f.text());const list=parseStations(j);if(!list.length)throw 0;cache={t:Date.now(),fecha:j.Fecha||"",provs:[...S.provs],list};ls.set(K.st,cache);toast(list.length+" gasolineras importadas")}
   catch(_){toast("El archivo no tiene el formato del Ministerio")}e.target.value=""});
 $("#backupOut").addEventListener("click",()=>{const data={v:1,exported:new Date().toISOString()};for(const[k,v]of Object.entries(K))if(k!=="st")data[v]=ls.get(v,null);
-  download("copiloto-copia-"+new Date().toISOString().slice(0,10)+".json",JSON.stringify(data),"application/json")});
+  download("copiloto-copia-"+hoyLocal()+".json",JSON.stringify(data),"application/json")});
 $("#backupIn").addEventListener("change",async e=>{const f=e.target.files[0];if(!f)return;
   try{const d=JSON.parse(await f.text());if(!d.v)throw 0;if(!confirm("Se sustituirán los datos actuales por los de la copia. ¿Continuar?"))return;
     for(const v of Object.values(K))if(d[v]!==undefined&&d[v]!==null)ls.set(v,d[v]);location.reload()}catch(_){toast("El archivo no es una copia válida")}});
@@ -1356,7 +1360,16 @@ function wordsToNum(N,Lt){
     const val=String(total+cur);oN.push(val);oL.push(val);i=j;
   }
   for(let k=0;k+2<oN.length;k++){if(/^\d+$/.test(oN[k])&&oN[k+1]==="coma"&&/^\d+$/.test(oN[k+2])){const v=oN[k]+"."+oN[k+2];oN.splice(k,3,v);oL.splice(k,3,v)}}
+  joinDecimals(oN,oL);
   return{N:oN,L:oL};
+}
+/* Precios dictados cifra a cifra: «uno coma cuatro tres nueve» → 1.4 3 9 → 1.439 (máx. 3 decimales) */
+function joinDecimals(N,Lt){
+  for(let k=0;k<N.length;k++){
+    if(!/^\d\.\d{1,2}$/.test(N[k]))continue;
+    let v=N[k];while(k+1<N.length&&/^\d$/.test(N[k+1])&&v.split(".")[1].length<3){v+=N[k+1];N.splice(k+1,1);Lt.splice(k+1,1)}
+    N[k]=v;Lt[k]=v;
+  }
 }
 const stripAcc=s=>s.normalize("NFD").replace(/[\u0300-\u036f]/g,"");
 function vnorm(raw){
@@ -1509,7 +1522,7 @@ function vZone(){const t=currentTramo();if(!t){say(noGroupMsg());return}const pk
   say(`Grupo ${t.idx+1}: ${pk} bulto${pk>1?"s":""} en ${t.zone}.`)}
 function vSummary(){const d=dayStats();if(!d.stops){say("Hoy todavía no hay paradas.");return}
   say(`Llevas ${d.done} de ${d.stops} paradas.${d.perHour?" Vas a "+eur(d.perHour,1)+" paradas por hora.":""}${d.walkMin?" Cada grupo te lleva de media "+Math.round(d.walkMin)+" minutos.":""} Con los grupos te ahorras unos ${eur(d.saved,1)} kilómetros, unos ${eur(d.savedEur)} euros de gasóleo.`)}
-function vSpent(){const ym=new Date().toISOString().slice(0,7),mo=logs.filter(l=>l.date.startsWith(ym));
+function vSpent(){const ym=hoyLocal().slice(0,7),mo=logs.filter(l=>l.date.startsWith(ym));
   if(!mo.length){say("Este mes no has anotado repostajes.");return}const sp=mo.reduce((a,l)=>a+l.liters*l.price,0),li=mo.reduce((a,l)=>a+l.liters,0);
   say(`Este mes llevas ${eur(sp)} euros en gasóleo, ${eur(li,0)} litros en ${mo.length} repostaje${mo.length>1?"s":""}, a una media de ${priceSpeech(sp/li)}.`)}
 function vCons(){const rc=realConsumption(),c=rc??S.cons;say(`${rc?"Tu consumo real es":"Todavía no tengo tu consumo real; uso el estimado de"} ${eur(c,1)} litros a los cien. El kilómetro te sale a unos ${Math.round(c*fuelPrice())} céntimos.`)}
@@ -1590,7 +1603,10 @@ function route_(t){
   if(/(ya he aparcado|he aparcado|estoy aparcado|ya aparque|aparque|he llegado|llegue|ya estoy|estoy aqui|ya estoy aqui|estoy en el sitio)/.test(t))return vAnd(vArrive);
   if(/((?:grupo|zona) (?:terminado|terminada|hecho|acabado|listo|completo|completado)|termine el grupo|acabe el grupo|terminado el grupo|fin del grupo|cierra el grupo|he terminado (?:el grupo|aqui|esta zona)|todo entregado)/.test(t))return vFinish;
   mm=t.match(/^(?:ya )?(?:entregad[ao]s?|entregue|lo he entregado|la he entregado|lo entregue|la entregue|hech[ao]|list[ao]|dejad[ao]|lo he dejado|lo deje|ya esta|paquete entregado|siguiente entregada|marca(?:r)?(?: como)? entregad[ao]|entrega hecha|entregada la)(?: la| el)?(?: parada| paquete| numero)?(?: (\d+))?$/);if(mm)return()=>vDone(mm[1]);
-  mm=t.match(/(?:^|\b)(?:entregad[ao]s?|entregue|marca(?:r)? (?:como )?entregada)(?: la)?(?: parada)?(?: (\d+))?$/);if(mm)return()=>vDone(mm[1]);
+  /* «la 12 entregada», «la parada 12 está entregada»: el número va delante */
+  mm=t.match(/^(?:ya )?(?:la |el )?(?:parada |entrega |paquete )?(?:numero )?(\d{1,4})(?: ya)?(?: (?:esta|es|ha sido|queda|la he|lo he))? (?:entregad[ao]s?|hech[ao]|list[ao]|dejad[ao])$/);if(mm)return()=>vDone(mm[1]);
+  mm=t.match(/(?:^|\b)(?:entregad[ao]s?|entregue|marca(?:r)? (?:como )?entregada)(?: la)?(?: parada)?(?: (\d+))?$/);
+  if(mm){const pre=mm[1]||(t.match(/\b(?:parada|numero) (\d{1,4})\b/)||[])[1];return()=>vDone(pre)}
   if(/(donde aparco|donde paro|siguiente|proxima|proximo|a donde voy|adonde voy|que toca|que sigue|donde voy|donde tengo que ir|cual es la siguiente|a donde tengo que ir)/.test(t))return vNext;
   if(/(que zona|donde cojo|de donde cojo|donde estan los bultos|donde estan los paquetes|que bultos|que cojo|que paquetes cojo|donde esta el paquete)/.test(t))return vZone;
   return null;
@@ -1608,6 +1624,7 @@ function suggestFor(n){
 /* ================= IA (Claude, a través de la función segura de Supabase) ================= */
 const AI_ERR={sin_sesion:"Para usar la IA, entra con tu cuenta en Ajustes, en «Cuenta y copia en la nube».",
   sin_clave:"La IA aún no está activada en el servidor: falta poner la clave de Anthropic en Supabase.",
+  no_permitido:"Esta cuenta no tiene permiso para usar la IA. Añade tu correo al secreto IA_CORREOS_PERMITIDOS en Supabase.",
   clave_invalida:"La clave de la IA no es válida. Revísala en los secretos de Supabase.",
   sin_saldo:"No queda saldo en tu cuenta de Anthropic.",
   limite:"Has llegado al límite de consultas de IA de hoy.",
@@ -1829,38 +1846,67 @@ async function sbInit(){
   return sb;
 }
 function isMissingTable(err){return err&&(err.code==="42P01"||err.code==="PGRST205"||/could not find the table|does not exist/i.test(err.message||""))}
+/* Mezcla a tres bandas (local, nube y la última versión sincronizada = «base») para listas con id.
+   Así, si en la tablet y en el ordenador se cambian cosas distintas a la vez, se conservan las dos,
+   y lo borrado en un lado no reaparece. */
+const LISTKEY={[K.notes]:x=>x.key||x.id,[K.spots]:x=>x.id,[K.logs]:x=>x.id,[K.hist]:x=>x.date+"|"+x.stops+"|"+x.done};
+function hstr(s){let h=5381;for(let i=0;i<s.length;i++)h=((h<<5)+h+s.charCodeAt(i))|0;return(h>>>0).toString(36)}
+function baseOf(k,v){const f=LISTKEY[k];if(!f||!Array.isArray(v))return null;const o={};for(const x of v)o[f(x)]=hstr(JSON.stringify(x));return o}
+function merge3(k,local,remote,base){
+  const f=LISTKEY[k],L=new Map((local||[]).map(x=>[f(x),x])),R=new Map((remote||[]).map(x=>[f(x),x])),B=base||{},out=[];
+  const h=x=>hstr(JSON.stringify(x));
+  for(const id of new Set([...R.keys(),...L.keys()])){
+    const l=L.get(id),r=R.get(id),b=B[id];
+    if(l&&r){out.push(b&&h(l)===b?r:l);continue}          /* en los dos: gana el lado que lo cambió (local si ambos) */
+    if(l){if(!b||h(l)!==b)out.push(l);continue}           /* solo aquí: nuevo, o cambiado aquí aunque se borrase allí */
+    if(r){if(!b||h(r)!==b)out.push(r)}                    /* solo en la nube: nuevo allí, o borrado aquí sin cambios allí */
+  }
+  if(k===K.hist)out.sort((x,y)=>String(x.date).localeCompare(String(y.date)));
+  return out;
+}
+function mergeLater(k,local,remote,base){
+  if(LISTKEY[k])return merge3(k,local,remote,base);
+  if(k===K.geo){const o=Object.assign({},remote||{});for(const[a,g]of Object.entries(local||{}))if(!o[a]||g.manual)o[a]=g;return o}
+  return local; /* ajustes y ruta: gana el último cambio hecho aquí */
+}
 async function pull(){
-  const{data,error}=await sb.from(SB_TABLE).select("clave,datos,actualizado");
-  if(error)throw error;
+  /* primero solo las fechas; los datos se descargan solo de lo que ha cambiado en la nube */
+  const{data:heads,error:e1}=await sb.from(SB_TABLE).select("clave,actualizado");
+  if(e1)throw e1;
   const first=syncMeta.__user!==sbUser.id;const seen=new Set();
-  for(const row of data||[]){
-    const k=CLAVE2K[row.clave];if(!k)continue;seen.add(row.clave);
+  const want=(heads||[]).filter(r=>CLAVE2K[r.clave]&&(first||(syncMeta[r.clave]||{}).rts!==r.actualizado)).map(r=>r.clave);
+  let data=[];
+  if(want.length){const q=await sb.from(SB_TABLE).select("clave,datos,actualizado").in("clave",want);if(q.error)throw q.error;data=q.data||[]}
+  for(const r of heads||[])seen.add(r.clave);
+  for(const row of data){
+    const k=CLAVE2K[row.clave];if(!k)continue;
     const m=syncMeta[row.clave]||(syncMeta[row.clave]={});
-    if(first){const merged=mergeFirst(k,localData(k),row.datos);applyLocal(k,merged);
-      m.rts=row.actualizado;m.dirty=JSON.stringify(forCloud(k,merged))!==JSON.stringify(row.datos);continue}
-    if(m.rts&&Date.parse(row.actualizado)<=Date.parse(m.rts))continue;
-    if(m.dirty&&(m.mod||0)>Date.parse(row.actualizado))continue; /* lo local es más reciente: se subirá */
-    applyLocal(k,row.datos);m.rts=row.actualizado;m.dirty=false;
+    const merged=first?mergeFirst(k,localData(k),row.datos):m.dirty?mergeLater(k,localData(k),row.datos,m.base):row.datos;
+    applyLocal(k,merged);
+    m.rts=row.actualizado;m.base=baseOf(k,row.datos);
+    m.dirty=JSON.stringify(forCloud(k,merged))!==JSON.stringify(row.datos);if(m.dirty)m.mod=Date.now();
   }
   for(const[k,c]of Object.entries(SYNC)){if(!seen.has(c)&&localData(k)!=null){const m=syncMeta[c]||(syncMeta[c]={});if(first||!m.rts)m.dirty=true}}
-  syncMeta.__user=sbUser.id;saveMeta();refreshActive();
+  syncMeta.__user=sbUser.id;saveMeta();if(data.length)refreshActive();
 }
 async function push(){
-  const rows=[];const now=new Date().toISOString();
-  for(const[k,c]of Object.entries(SYNC)){const m=syncMeta[c];if(!m||!m.dirty)continue;const v=localData(k);if(v==null)continue;rows.push({user_id:sbUser.id,clave:c,datos:forCloud(k,v),actualizado:now})}
+  const rows=[],mods={};const now=new Date().toISOString();
+  for(const[k,c]of Object.entries(SYNC)){const m=syncMeta[c];if(!m||!m.dirty)continue;const v=localData(k);if(v==null)continue;mods[c]=m.mod;rows.push({user_id:sbUser.id,clave:c,datos:forCloud(k,v),actualizado:now})}
   if(!rows.length)return;
   const{error}=await sb.from(SB_TABLE).upsert(rows,{onConflict:"user_id,clave"});
   if(error)throw error;
-  for(const r of rows){const m=syncMeta[r.clave];m.dirty=false;m.rts=now}saveMeta();
+  for(const r of rows){const m=syncMeta[r.clave];m.rts=now;m.base=baseOf(CLAVE2K[r.clave],r.datos);
+    if(m.mod===mods[r.clave])m.dirty=false} /* si se tocó algo mientras subía, sigue pendiente */
+  saveMeta();
 }
 async function syncNow(full){
   if(!sb||!sbUser||syncing)return;syncing=true;cloudStatus();
-  try{if(full!==false)await pull();await push();cloudErr="";tableMissing=false;lastSyncOk=Date.now()}
+  try{if(full!==false)await pull();await push();if(Object.values(syncMeta).some(m=>m&&m.dirty))schedulePush();cloudErr="";tableMissing=false;lastSyncOk=Date.now()}
   catch(e){if(isMissingTable(e)){tableMissing=true;const d=$("#sqlBox");if(d)d.open=true}
     else cloudErr=(e&&/fetch|network|Failed/i.test(e.message||""))?"sin conexión, pendiente":"error al sincronizar"}
   finally{syncing=false;cloudStatus()}
 }
-function schedulePush(){cloudStatus();if(!sbUser)return;clearTimeout(pushTimer);pushTimer=setTimeout(()=>syncNow(false),2500)}
+function schedulePush(){cloudStatus();if(!sbUser)return;clearTimeout(pushTimer);pushTimer=setTimeout(()=>syncNow(true),2500)}
 window.addEventListener("online",()=>{cloudErr="";syncNow(true)});
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")syncNow(true)});
 setInterval(()=>{if(document.visibilityState==="visible")syncNow(true)},60000);
@@ -1888,7 +1934,7 @@ $("#cUp").addEventListener("click",()=>cloudAuth("up"));
 $("#cIn").addEventListener("click",()=>cloudAuth("in"));
 $("#cPass").addEventListener("keydown",e=>{if(e.key==="Enter")cloudAuth("in")});
 $("#cOut").addEventListener("click",async()=>{if(!confirm("¿Cerrar sesión en este dispositivo? Tus datos seguirán aquí y en la nube."))return;
-  try{await syncNow(false)}catch(_){} try{await sb.auth.signOut()}catch(_){} sbUser=null;delete syncMeta.__user;saveMeta();renderCloud();toast("Sesión cerrada")});
+  try{await syncNow(true)}catch(_){} try{await sb.auth.signOut()}catch(_){} sbUser=null;delete syncMeta.__user;saveMeta();renderCloud();toast("Sesión cerrada")});
 $("#cSync").addEventListener("click",async()=>{await syncNow(true);toast(cloudErr||tableMissing?"No se pudo sincronizar":"Sincronizado")});
 $("#cCopySql").addEventListener("click",async()=>{const t=$("#sqlText").textContent;try{await navigator.clipboard.writeText(t);toast("SQL copiado")}catch(_){const r=document.createRange();r.selectNodeContents($("#sqlText"));const s=getSelection();s.removeAllRanges();s.addRange(r);toast("Selecciónalo y cópialo")}});
 $("#cSaveConf").addEventListener("click",()=>{const u=$("#cUrl").value.trim().replace(/\/+$/,""),k=$("#cKey").value.trim();

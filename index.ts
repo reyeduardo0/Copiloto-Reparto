@@ -117,6 +117,11 @@ Deno.serve(async (req) => {
   });
   const { data: u, error: ue } = await sb.auth.getUser(token);
   if (ue || !u?.user) return json({ error: "sin_sesion" }, 401);
+  // Solo las cuentas de la lista pueden usar la IA (y gastar saldo de Anthropic).
+  // Secreto IA_CORREOS_PERMITIDOS: correos separados por comas. Si falta, nadie puede usarla.
+  const permitidos = (Deno.env.get("IA_CORREOS_PERMITIDOS") ?? "")
+    .split(",").map((c) => c.trim().toLowerCase()).filter(Boolean);
+  if (!permitidos.includes((u.user.email ?? "").toLowerCase())) return json({ error: "no_permitido" }, 403);
 
   let body: Record<string, unknown>;
   try { body = await req.json(); } catch (_) { return json({ error: "formato" }, 400); }
