@@ -460,11 +460,10 @@ revoke all on public.copiloto_datos from anon;</pre>
             <h2>Instalar la app (recomendado)</h2>
             <p class="help" id="installState"></p>
             <ol class="help" style="padding-left:20px">
-              <li>Crea una cuenta gratuita en <b>github.com</b> (solo correo y contraseña).</li>
-              <li>Pulsa <b>«+» → «New repository»</b>, ponle de nombre <b>copiloto</b>, márcalo como <b>Public</b> y pulsa «Create repository».</li>
-              <li>En el repositorio pulsa <b>«uploading an existing file»</b> y arrastra este archivo. Antes, <b>cámbiale el nombre a index.html</b>. Pulsa «Commit changes».</li>
-              <li>Ve a <b>Settings → Pages</b>. En «Branch» elige <b>main</b> y pulsa «Save». En uno o dos minutos te dará una dirección como <b>https://tu-usuario.github.io/copiloto/</b>.</li>
-              <li>Abre esa dirección en Chrome (en la tablet y en el ordenador), acepta el micrófono y el GPS <b>una vez</b> y en la tablet usa <b>⋮ → «Añadir a pantalla de inicio»</b>.</li>
+              <li>Abre <b>https://reyeduardo0.github.io/Copiloto-Reparto/</b> en Chrome, en la tablet y en el ordenador.</li>
+              <li>Acepta el micrófono y el GPS <b>una vez</b>.</li>
+              <li>En la tablet usa <b>⋮ → «Añadir a pantalla de inicio»</b> (o «Instalar aplicación»).</li>
+              <li>Entra con tu cuenta en «Cuenta y copia en la nube» para tener lo mismo en todos los dispositivos.</li>
             </ol>
             <p class="help">Tus datos no se pasan solos de la versión en archivo a la publicada: usa «Descargar copia» aquí y «Restaurar copia» en la nueva.</p>
           </div>
@@ -537,7 +536,7 @@ revoke all on public.copiloto_datos from anon;</pre>
             <div class="field"><label for="sTheme">Tema</label>
               <select id="sTheme"><option value="auto">Automático</option><option value="light">Claro (pleno sol)</option><option value="dark">Oscuro (noche)</option></select>
             </div>
-            <p class="help">Todo se guarda solo en esta tablet. Haz una copia de vez en cuando (no incluye las fotos).</p>
+            <p class="help">Los datos se guardan en este dispositivo y, si has entrado con tu cuenta, también en la nube. Las fotos solo se quedan aquí. La copia en archivo sirve para guardarla tú o pasarla a otro dispositivo sin cuenta.</p>
             <div class="inline">
               <button class="btn small" id="backupOut">Descargar copia</button>
               <label class="btn small" for="backupIn" style="display:inline-grid;place-items:center">Restaurar copia</label>
@@ -566,6 +565,10 @@ revoke all on public.copiloto_datos from anon;</pre>
 <div class="filewarn" id="fileWarn" role="alert" hidden>
   <div><b>Estás abriendo la app como archivo.</b> Así el navegador no recuerda los permisos del micrófono y del GPS, y te los pedirá una y otra vez. Publícala en internet una sola vez y se acabará el problema.</div>
   <div class="inline"><button class="btn small primary" data-tab="v-set" id="fileWarnGo">Cómo hacerlo</button><button class="btn small" id="fileWarnX">Ahora no</button></div>
+</div>
+<div class="filewarn" id="dayWarn" role="alert" hidden>
+  <div id="dayWarnText"></div>
+  <div class="inline"><button class="btn small primary" id="dayWarnNew">Empezar jornada nueva</button><button class="btn small" id="dayWarnKeep">Seguir con esa ruta</button></div>
 </div>
 <div class="vdock">
   <button class="hf" id="hfBtn" aria-pressed="false">Manos libres</button>
@@ -623,7 +626,8 @@ const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const avg=a=>a.reduce((x,y)=>x+y,0)/a.length;
-function toast(m){const t=$("#toast");t.textContent=m;t.style.display="block";clearTimeout(t._h);t._h=setTimeout(()=>t.style.display="none",2800)}
+function toast(m,undo){const t=$("#toast");if(undo){t.innerHTML=esc(m)+' <button class="btn small" data-toastundo="1" style="margin-left:10px;min-height:40px;background:var(--bg);color:var(--ink)">Deshacer</button>'}else t.textContent=m;
+  t.style.display="block";clearTimeout(t._h);t._h=setTimeout(()=>t.style.display="none",undo?7000:2800)}
 function parseLL(s){const m=String(s||"").split(/[,;\s]+/).map(num).filter(isFinite);return m.length>=2?{lat:m[0],lon:m[1]}:null}
 function hav(a,b){const R=6371,r=x=>x*Math.PI/180;const dLat=r(b.lat-a.lat),dLon=r(b.lon-a.lon);const h=Math.sin(dLat/2)**2+Math.cos(r(a.lat))*Math.cos(r(b.lat))*Math.sin(dLon/2)**2;return 2*R*Math.asin(Math.sqrt(h))}
 const m=(a,b)=>hav(a,b)*1000;
@@ -813,7 +817,7 @@ function checkAlerts(){
 }
 function checkArrival(){
   const t=currentTramo();if(!t||!t.park||!here)return;const tm=route.times[t.idx]||{};
-  if(!tm.arrive&&m(here,t.park)<60){route.times[t.idx]={...tm,arrive:Date.now()};saveRoute();toast("Llegada al grupo T"+(t.idx+1)+" registrada");if(active==="v-deliv")renderDeliv(false);if(S.voiceAlerts)say(`Llegada al grupo ${t.idx+1}. ${tramoBrief(t)}`,{show:false,queue:true})}
+  if(!tm.arrive&&m(here,t.park)<60){route.times[t.idx]={...tm,arrive:Date.now()};saveRoute();toast("Llegada al grupo G"+(t.idx+1)+" registrada");if(active==="v-deliv")renderDeliv(false);if(S.voiceAlerts)say(`Llegada al grupo ${t.idx+1}. ${tramoBrief(t)}`,{show:false,queue:true})}
 }
 
 /* ================= notes & spots lookup ================= */
@@ -889,19 +893,19 @@ async function geocodeAll(){
       const k=normKey(s.addr);
       const n=notes.find(x=>x.key===k&&hasLL(x));
       if(n){Object.assign(s,{lat:n.lat,lon:n.lon,geo:"ok"});fixExtra(s);continue}
-      if(geo[k]&&!(geo[k].src==="g"&&Date.now()-(geo[k].t||0)>GCACHE)){Object.assign(s,{lat:geo[k].lat,lon:geo[k].lon,geo:geo[k].manual?"manual":geo[k].approx?"approx":"ok"});fixExtra(s);continue}
+      if(geo[k]&&!(geo[k].src==="g"&&Date.now()-(geo[k].t||0)>GCACHE)){geo[k].u=Date.now();Object.assign(s,{lat:geo[k].lat,lon:geo[k].lon,geo:geo[k].manual?"manual":geo[k].approx?"approx":"ok"});fixExtra(s);continue}
       $("#geoState").textContent="Localizando parada "+s.seq+"…";
       let q=s.addr.replace(/,\s*(?:\d+\s*[ºª°]|(?:\d+\s*(?:izq|izda|dcha|der|dr)|bajo|entreplanta|[aá]tico|piso|puerta|esc(?:alera)?|bloque|portal|local)(?![a-zñáéíóú]))[^,]*/gi,"").trim();if(S.town&&!/\b\d{5}\b/.test(q)&&!normKey(q).includes(normKey(S.town)))q+=", "+S.town;
       if(S.gGeo&&await loadGoogle()){
         const g=await gGeocode(q,bias);
-        if(g&&!g.none){Object.assign(s,{lat:g.lat,lon:g.lon,geo:g.approx?"approx":"ok"});geo[k]={lat:g.lat,lon:g.lon,addr:s.addr,src:"g",t:Date.now(),approx:g.approx};
+        if(g&&!g.none){Object.assign(s,{lat:g.lat,lon:g.lon,geo:g.approx?"approx":"ok"});geo[k]={lat:g.lat,lon:g.lon,addr:s.addr,u:Date.now(),src:"g",t:Date.now(),approx:g.approx};
           fixExtra(s);saveRoute();ls.set(K.geo,geo);renderRoute();await sleep(120);continue}
         if(g&&g.none){s.geo="fail";saveRoute();renderRoute();await sleep(120);continue}
         /* error de Google (cuota, clave…): se intenta con CartoCiudad y OpenStreetMap */
       }
       if(S.ccGeo){
         const c=await ccGeocode(q);
-        if(c&&!c.none){Object.assign(s,{lat:c.lat,lon:c.lon,geo:c.approx?"approx":"ok"});geo[k]={lat:c.lat,lon:c.lon,addr:s.addr,src:"cc",approx:c.approx};
+        if(c&&!c.none){Object.assign(s,{lat:c.lat,lon:c.lon,geo:c.approx?"approx":"ok"});geo[k]={lat:c.lat,lon:c.lon,addr:s.addr,u:Date.now(),src:"cc",approx:c.approx};
           fixExtra(s);saveRoute();ls.set(K.geo,geo);renderRoute();await sleep(250);continue}
         /* sin resultado o sin conexión con CartoCiudad: se prueba OpenStreetMap */
       }
@@ -915,7 +919,7 @@ async function geocodeAll(){
       if(!r.ok){ /* 403/429: OpenStreetMap rechaza la petición. No se reintenta en esta sesión. */
         if(r.status===403||r.status===429)nomiBlocked=true;s.geo="fail";saveRoute();renderRoute();continue}
       try{const j=await r.json();
-        if(j&&j[0]){s.lat=+j[0].lat;s.lon=+j[0].lon;s.geo="ok";geo[k]={lat:s.lat,lon:s.lon,addr:s.addr}}else s.geo="fail";
+        if(j&&j[0]){s.lat=+j[0].lat;s.lon=+j[0].lon;s.geo="ok";geo[k]={lat:s.lat,lon:s.lon,addr:s.addr,u:Date.now()}}else s.geo="fail";
       }catch(e){s.geo="fail"}
       fixExtra(s);saveRoute();ls.set(K.geo,geo);renderRoute();
       await sleep(1100); /* límite de uso del servicio gratuito: 1 consulta por segundo */
@@ -925,7 +929,7 @@ async function geocodeAll(){
 }
 function fixExtra(s){const t=route.tramos.find(x=>x.nogeo&&x.stopIds.length===1&&x.stopIds[0]===s.id);if(t&&hasLL(s)){t.nogeo=false;t.park=parkingFor([s])}}
 function setStopLocation(s,ll,learn=true){
-  s.lat=ll.lat;s.lon=ll.lon;s.geo="manual";fixExtra(s);if(learn)geo[normKey(s.addr)]={lat:ll.lat,lon:ll.lon,addr:s.addr,manual:true};
+  s.lat=ll.lat;s.lon=ll.lon;s.geo="manual";fixExtra(s);if(learn)geo[normKey(s.addr)]={lat:ll.lat,lon:ll.lon,addr:s.addr,manual:true,u:Date.now()};
   ls.set(K.geo,geo);saveRoute();
 }
 
@@ -1075,7 +1079,7 @@ function drawDelivMap(t,refit){
     if(t.park){L.marker([t.park.lat,t.park.lon],{icon:parkIcon(!!t.park.spotId,true)}).addTo(mp._g);pts.push([t.park.lat,t.park.lon]);
       const path=[t.park,...t.stopIds.map(byId).filter(hasLL),t.park].map(p=>[p.lat,p.lon]);L.polyline(path,{color:col,weight:4,opacity:.7,dashArray:"6 8"}).addTo(mp._g)}
     t.stopIds.map(byId).filter(hasLL).forEach(s=>{L.marker([s.lat,s.lon],{icon:stopIcon(s.seq,col,s.done)}).addTo(mp._g);pts.push([s.lat,s.lon])});
-    const nx=route.tramos[t.idx+1];if(nx&&nx.park)L.marker([nx.park.lat,nx.park.lon],{icon:parkIcon(!!nx.park.spotId),opacity:.55}).addTo(mp._g).bindTooltip("Siguiente: T"+(nx.idx+1));
+    const nx=route.tramos[t.idx+1];if(nx&&nx.park)L.marker([nx.park.lat,nx.park.lon],{icon:parkIcon(!!nx.park.spotId),opacity:.55}).addTo(mp._g).bindTooltip("Siguiente: G"+(nx.idx+1));
   }
   meDot(mp._g);if(here)pts.push([here.lat,here.lon]);if(refit)fit(mp,pts);
 }
@@ -1353,18 +1357,18 @@ function fillSettings(){
   for(const[id,k]of Object.entries(f))$("#"+id).value=S[k];
   $("#sVibe").checked=!!S.vibe;$("#sGKey").value=S.gKey||"";$("#sGMap").checked=!!S.gMap;$("#sGGeo").checked=!!S.gGeo;$("#sGType").value=S.gType||"roadmap";$("#sGTraffic").checked=!!S.gTraffic;$("#sNav").value=S.navApp||"google";$("#sAiVoice").checked=!!S.aiVoice;$("#sAiLabel").checked=!!S.aiLabel;$("#sCC").checked=S.ccGeo!==false;$("#sOsrm").checked=S.osrm!==false;if(S.gKey)$("#gDetails").open=true;$("#sVReply").checked=!!S.voiceReply;$("#sVAlerts").checked=!!S.voiceAlerts;$("#sVRate").value=S.voiceRate;$$(".prov").forEach(c=>c.checked=S.provs.includes(c.value));$("#rawLink").href=API+"28/"+GASOLEO_A;
 }
-function readSettings(){
+function readSettings(silent){
   const g=(id,d)=>{const v=num($(id).value);return isFinite(v)?v:d};const provs=$$(".prov").filter(c=>c.checked).map(c=>c.value);const before=JSON.stringify(S.provs);
   S={...S,walk:g("#sWalk",180),maxStops:g("#sMaxStops",8),maxPkg:g("#sMaxPkg",10),snap:g("#sSnap",150),town:$("#sTown").value.trim(),zones:$("#sZones").value.trim()||DEFAULTS.zones,
     alert:g("#sAlert",80),vibe:$("#sVibe").checked,voiceReply:$("#sVReply").checked,voiceAlerts:$("#sVAlerts").checked,voiceRate:g("#sVRate",1),liters:g("#sLit",50),cons:g("#sCons",8.5),hour:g("#sHour",0),speed:g("#sSpeed",30),radius:g("#sRadius",10),factor:g("#sFactor",1.3),
     home:$("#sHome").value.trim(),base:$("#sBase").value.trim(),disc:g("#sDisc",0),brands:$("#sBrands").value,proxy:$("#sProxy").value.trim(),theme:$("#sTheme").value,provs:provs.length?provs:["28"],gKey:$("#sGKey").value.trim(),gMap:$("#sGMap").checked,gGeo:$("#sGGeo").checked,gType:$("#sGType").value,gTraffic:$("#sGTraffic").checked,navApp:$("#sNav").value,ccGeo:$("#sCC").checked,osrm:$("#sOsrm").checked,stopMin:Math.max(0.5,g("#sStopMin",4)),parkMin:Math.max(0,g("#sParkMin",2)),aiVoice:$("#sAiVoice").checked,aiLabel:$("#sAiLabel").checked};
-  ls.set(K.set,S);applyTheme();toast("Ajustes guardados");if(JSON.stringify(S.provs)!==before)loadStations(true);
+  ls.set(K.set,S);applyTheme();if(!silent)toast("Ajustes guardados");if(JSON.stringify(S.provs)!==before)loadStations(true);
   if(gReady&&S.gKey&&S.gKey!==gLoadedKey)toast("Clave nueva guardada: cierra y vuelve a abrir la app para aplicarla");
   else if(S.gKey&&(S.gMap||S.gGeo)){if(S.gKey!==gLoadedKey)gFail=false;loadGoogle().then(()=>Object.values(maps).forEach(m=>{applyBase(m);setGType(m);syncCtl(m)}))}
   else Object.values(maps).forEach(applyBase);
   if(active==="v-deliv")renderDeliv(false);
 }
-$("#saveSet").addEventListener("click",readSettings);
+$("#saveSet").addEventListener("click",()=>readSettings());
 $("#aiTest").addEventListener("click",async()=>{
   const o=$("#aiState");if(!sbUser){o.textContent=AI_ERR.sin_sesion;return}
   o.textContent="Probando…";const r=await aiCall({modo:"ping"});
@@ -1381,7 +1385,7 @@ $("#gTestBtn").addEventListener("click",async()=>{
   const g=await gGeocode("Puerta del Sol, Madrid");
   out.textContent=g?"Clave correcta: el mapa y la localización de direcciones funcionan.":"El mapa funciona, pero la localización no. Activa la Geocoding API para esta clave (mientras tanto se usa OpenStreetMap).";
 });
-$("#v-set").addEventListener("change",e=>{if(e.target.matches("input:not([type=file]),select,textarea"))readSettings()});
+$("#v-set").addEventListener("change",e=>{if(e.target.matches("input:not([type=file]),select,textarea"))readSettings(true)});
 $("#importJson").addEventListener("change",async e=>{const f=e.target.files[0];if(!f)return;
   try{const j=JSON.parse(await f.text());const list=parseStations(j);if(!list.length)throw 0;cache={t:Date.now(),fecha:j.Fecha||"",provs:[...S.provs],list};ls.set(K.st,cache);toast(list.length+" gasolineras importadas")}
   catch(_){toast("El archivo no tiene el formato del Ministerio")}e.target.value=""});
@@ -1409,10 +1413,19 @@ document.addEventListener("click",async e=>{
   else if(d.rm){if(confirm("¿Quitar esta parada?")){
     if(started()){const s=byId(d.rm);if(s){s.done=true;s.cancel=true;s.doneAt=Date.now();saveRoute();renderRoute();toast("Parada quitada. El reparto sigue igual.")}}
     else{route.stops=route.stops.filter(s=>s.id!==d.rm);route.tramos=[];route.times={};saveRoute();renderRoute()}}}
-  else if(d.arrive){route.times[d.arrive]={...(route.times[d.arrive]||{}),arrive:Date.now()};saveRoute();renderDeliv(false)}
-  else if(d.finish){const tr=route.tramos[+d.finish];const now=Date.now();tr.stopIds.map(byId).forEach(s=>{if(!s.done){s.done=true;s.doneAt=now}});route.times[d.finish]={...(route.times[d.finish]||{}),end:now};saveRoute();renderDeliv(true);toast("Grupo T"+(+d.finish+1)+" terminado")}
-  else if(d.done){const s=byId(d.done);s.done=!s.done;s.doneAt=s.done?Date.now():null;const tr=tramoOf(s.id);
-    if(tr&&tr.stopIds.every(id=>byId(id).done)){route.times[tr.idx]={...(route.times[tr.idx]||{}),end:Date.now()};saveRoute();renderDeliv(true);toast("Grupo T"+(tr.idx+1)+" terminado")}else{saveRoute();renderDeliv(false)}}
+  else if(d.arrive){const i=+d.arrive,prev=route.times[i]?{...route.times[i]}:null;route.times[i]={...(prev||{}),arrive:Date.now()};saveRoute();
+    pushUndo(()=>{if(prev)route.times[i]=prev;else delete route.times[i];saveRoute()},"la llegada al grupo "+(i+1));renderDeliv(false);toast("Llegada al grupo G"+(i+1)+" registrada",true)}
+  else if(d.finish){const i=+d.finish,tr=route.tramos[i],now=Date.now(),prev=route.times[i]?{...route.times[i]}:null;
+    const changed=tr.stopIds.map(byId).filter(s=>s&&!s.done);changed.forEach(s=>{s.done=true;s.doneAt=now});route.times[i]={...(prev||{}),end:now};saveRoute();
+    pushUndo(()=>{changed.forEach(s=>{s.done=false;s.doneAt=null});if(prev)route.times[i]=prev;else delete route.times[i];saveRoute()},"el cierre del grupo "+(i+1));
+    renderDeliv(true);toast("Grupo G"+(i+1)+" terminado",true)}
+  else if(d.done){const s=byId(d.done);if(!s)return;const tr=tramoOf(s.id);
+    if(!s.done){s.done=true;s.doneAt=Date.now();let endSet=false;
+      if(tr&&tr.stopIds.every(id=>byId(id).done)){route.times[tr.idx]={...(route.times[tr.idx]||{}),end:Date.now()};endSet=true}
+      saveRoute();pushUndo(()=>{s.done=false;s.doneAt=null;if(endSet&&route.times[tr.idx])delete route.times[tr.idx].end;saveRoute()},"la entrega de la parada "+s.seq);
+      renderDeliv(endSet);toast(endSet?"Grupo G"+(tr.idx+1)+" terminado":"Parada "+s.seq+" entregada",true)}
+    else{s.done=false;s.doneAt=null;delete s.cancel;if(tr&&route.times[tr.idx])delete route.times[tr.idx].end; /* el grupo vuelve a estar abierto */
+      saveRoute();renderDeliv(false);toast("Parada "+s.seq+" pendiente otra vez")}}
   else if(d.fixhere){if(!here){toast("Aún no hay señal GPS");return}const s=byId(d.fixhere);setStopLocation(s,here);const n=notes.find(x=>x.key===normKey(s.addr));if(n){n.lat=here.lat;n.lon=here.lon;ls.set(K.notes,notes)}toast("Ubicación exacta guardada para próximas veces");renderDeliv(false)}
   else if(d.addnote){const s=byId(d.addnote);const v=prompt("Nota para "+s.addr+" (código de portal, conserjería…)");if(v&&v.trim()){await saveNote(s.addr,v.trim(),here&&m(here,s)<60?here:(hasLL(s)?s:null),null);toast("Nota guardada");renderDeliv(false)}}
   else if(d.savespot){const v=prompt("Nombre para este aparcamiento","Aparcamiento "+(spots.length+1));if(v!==null&&saveSpot(v.trim(),"Otro"))toast("Aparcamiento guardado. Se usará al calcular los grupos.")}
@@ -1532,6 +1545,8 @@ const capFirst=s=>s.charAt(0).toUpperCase()+s.slice(1);
 /* --- undo --- */
 const undoStack=[];
 function pushUndo(fn,desc){undoStack.push({fn,desc});if(undoStack.length>20)undoStack.shift()}
+function undoLast(){const u=undoStack.pop();$("#toast").style.display="none";if(!u){toast("No hay nada que deshacer");return}u.fn();refreshActive();toast("Deshecho: "+u.desc)}
+document.addEventListener("click",e=>{if(e.target.closest("[data-toastundo]"))undoLast()});
 function vUndo(){const u=undoStack.pop();if(!u){say("No hay nada que deshacer.");return}u.fn();refreshActive();say("Deshecho: "+u.desc+".")}
 function refreshActive(){if(active==="v-route")renderRoute();else if(active==="v-deliv")renderDeliv(false);else if(active==="v-stats")renderStats();else if(active==="v-places")renderPlaces();else if(active==="v-load")renderLoad()}
 
@@ -1959,7 +1974,7 @@ function applyLocal(k,v){
   else if(k===K.logs)logs=v||[];
   else if(k===K.hist)hist=v||[];
   else if(k===K.geo){geo=Object.assign({},v||{},Object.fromEntries(Object.entries(geo).filter(([a,g])=>g.src==="g"&&!g.manual)));applyingRemote=true;try{rawSet(K.geo,geo)}finally{applyingRemote=false};fillDatalist()}
-  else if(k===K.route){route=v||newRoute();$("#qSeq").value=nextSeq()}
+  else if(k===K.route){route=v||newRoute();$("#qSeq").value=nextSeq();checkNewDay()}
 }
 function unionBy(a,b,key){const m=new Map();for(const x of [...(b||[]),...(a||[])]){const id=key(x);if(!m.has(id))m.set(id,x)}return[...m.values()]}
 function mergeFirst(k,local,remote){
@@ -2098,11 +2113,26 @@ if(cloud.url&&cloud.key&&(localStorage.getItem("dc:sb-auth")||syncMeta.__user))s
 })();
 /* ================= app instalable ================= */
 if("serviceWorker" in navigator&&location.protocol.startsWith("http"))navigator.serviceWorker.register("sw.js").catch(()=>{});
+/* ================= jornada nueva: aviso si la ruta abierta es de otro día ================= */
+function checkNewDay(){
+  const w=$("#dayWarn"),today=hoyLocal();let skip="";try{skip=localStorage.getItem("dc:dayskip")||""}catch(_){}
+  if(!route.stops.length||route.date===today||skip===today+"|"+route.date){w.hidden=true;return}
+  const f=new Date(route.date+"T12:00").toLocaleDateString("es-ES",{weekday:"long",day:"numeric",month:"long"});
+  const left=route.stops.filter(s=>!s.done).length;
+  $("#dayWarnText").innerHTML=`<b>La ruta abierta es del ${esc(f)}</b> (${route.stops.length} paradas${left?", "+left+" sin marcar":""}). ¿Empiezas la jornada de hoy? La anterior se guardará en el historial.`;
+  w.hidden=false;
+}
+$("#dayWarnNew").addEventListener("click",()=>{$("#dayWarn").hidden=true;if(route.stops.length&&!route.closed)archiveDay();RV=null;route=newRoute();saveRoute();$("#qSeq").value=nextSeq();showView("v-route");toast("Jornada nueva. La anterior está en el historial.")});
+$("#dayWarnKeep").addEventListener("click",()=>{$("#dayWarn").hidden=true;try{localStorage.setItem("dc:dayskip",hoyLocal()+"|"+route.date)}catch(_){}});
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")checkNewDay()});
 /* ================= init ================= */
-for(const k of Object.keys(geo))if(geo[k].src==="g"&&!geo[k].manual&&Date.now()-(geo[k].t||0)>GCACHE)delete geo[k];ls.set(K.geo,geo);
+/* direcciones localizadas: las de Google caducan a los 30 días (sus condiciones); el resto, si no se usan en 6 meses
+   (las fijadas a mano, en 1 año). Así no se acumulan direcciones de clientes para siempre. */
+{const now=Date.now(),D=864e5;let ch=false;for(const k of Object.keys(geo)){const g=geo[k];if(!g.u){g.u=now;ch=true}
+  if((g.src==="g"&&!g.manual&&now-(g.t||0)>GCACHE)||now-g.u>(g.manual?365:180)*D){delete geo[k];ch=true}}if(ch)ls.set(K.geo,geo)}
 if(S.gKey&&(S.gMap||S.gGeo))loadGoogle();
 applyTheme();fillSettings();fillDatalist();$("#fDate").value=nowLocal();$("#qSeq").value=nextSeq();
-watchPos();showView("v-route");
+watchPos();showView("v-route");checkNewDay();
 if(route.stops.some(s=>s.geo==="pending"))geocodeAll();
 if(!cache||Date.now()-cache.t>30*60000)loadStations(false);
 })();
