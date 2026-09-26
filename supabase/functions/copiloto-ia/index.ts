@@ -61,6 +61,14 @@ const HERRAMIENTAS = [
       litros: { type: "number" }, precio: { type: "number", description: "Euros por litro, p. ej. 1.439" },
       kilometros: { type: "integer", description: "Kilómetros del cuentakilómetros, si los dice" },
       lleno: { type: "boolean", description: "false solo si dice que no ha llenado el depósito" } }, required: ["litros"] } },
+  { name: "anotar_gasto", description: "Apunta un gasto de autónomo que no es gasóleo (peaje, aparcamiento, taller, ITV, seguro...).",
+    input_schema: { type: "object", properties: {
+      categoria: { type: "string", enum: ["peaje", "parking", "taller", "neumaticos", "itv", "seguro", "lavado", "movil", "material", "cuota", "gestoria", "otros"] },
+      importe: { type: "number", description: "Euros, IVA incluido" },
+      proveedor: { type: "string", description: "Solo si lo dice" } }, required: ["categoria", "importe"] } },
+  { name: "kilometros_jornada", description: "Kilómetros del cuentakilómetros al empezar o al terminar la jornada.",
+    input_schema: { type: "object", properties: {
+      momento: { type: "string", enum: ["inicio", "fin"] }, kilometros: { type: "integer" } }, required: ["momento", "kilometros"] } },
   { name: "guardar_aparcamiento", description: "Guarda la posición actual como buen sitio para aparcar.",
     input_schema: { type: "object", properties: { nombre: { type: "string" } } } },
   { name: "he_aparcado", description: "El repartidor ha llegado y aparcado en el grupo actual.", input_schema: { type: "object", properties: {} } },
@@ -70,7 +78,7 @@ const HERRAMIENTAS = [
   { name: "consultar", description: "Pregunta sobre su día. La app responde con datos reales.",
     input_schema: { type: "object", properties: { que: { type: "string", enum: [
       "siguiente", "cuantas_quedan", "lista_paradas", "que_paquetes_coger", "resumen_dia",
-      "gasto_gasoil_mes", "consumo", "gasolinera_barata", "notas_parada", "devoluciones"] },
+      "gasto_gasoil_mes", "consumo", "gasolinera_barata", "notas_parada", "devoluciones", "gastos_trimestre"] },
       numero: { type: "integer" } }, required: ["que"] } },
   { name: "navegar", description: "Abre la navegación.",
     input_schema: { type: "object", properties: {

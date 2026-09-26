@@ -292,7 +292,11 @@ body:has(.sv-view[style*="flex"]) .vpanel{z-index:3250;bottom:calc(16px + env(sa
         <div class="panel">
           <h2>Jornada de hoy</h2>
           <div class="stats" id="dayStats"></div>
-          <div class="inline" style="margin-top:12px"><button class="btn" id="closeDay">Cerrar jornada y guardar en el historial</button></div>
+          <div class="inline" style="margin-top:12px">
+            <div class="field"><label for="dOdo0">Km al empezar</label><input id="dOdo0" type="number" inputmode="numeric" placeholder="Cuentakilómetros"></div>
+            <div class="field"><label for="dOdo1">Km al terminar</label><input id="dOdo1" type="number" inputmode="numeric" placeholder="Cuentakilómetros"></div>
+          </div>
+          <div class="inline" style="margin-top:4px"><button class="btn" id="closeDay">Cerrar jornada y guardar en el historial</button></div>
         </div>
         <div class="panel">
           <h2>Gasóleo este mes</h2>
@@ -317,6 +321,34 @@ body:has(.sv-view[style*="flex"]) .vpanel{z-index:3250;bottom:calc(16px + env(sa
             <h2>Repostajes</h2>
             <div class="inline" style="margin-bottom:8px"><button class="btn small" id="exportCsv">Exportar para el gestor (CSV)</button></div>
             <div class="list" id="logList"></div>
+          </div>
+        </div>
+        <div class="two">
+          <div class="panel">
+            <h2>Anotar gasto de autónomo</h2>
+            <div class="inline">
+              <div class="field"><label for="gDate">Fecha</label><input id="gDate" type="date"></div>
+              <div class="field"><label for="gCat">Tipo</label><select id="gCat"></select></div>
+            </div>
+            <div class="inline">
+              <div class="field"><label for="gTotal">Importe total (con IVA) €</label><input id="gTotal" type="number" inputmode="decimal" step="0.01"></div>
+              <div class="field" style="max-width:130px"><label for="gIva">IVA</label><select id="gIva"><option value="21">21 %</option><option value="10">10 %</option><option value="4">4 %</option><option value="0">Sin IVA</option></select></div>
+            </div>
+            <div class="inline">
+              <div class="field"><label for="gProv">Proveedor</label><input id="gProv" type="text" placeholder="Autopista, taller…"></div>
+              <div class="field"><label for="gNum">Nº de factura</label><input id="gNum" type="text"></div>
+            </div>
+            <div class="field"><label for="gNota">Nota (opcional)</label><input id="gNota" type="text"></div>
+            <div class="field"><label for="gPhoto">Foto de la factura o tique</label><input id="gPhoto" type="file" accept="image/*" capture="environment"></div>
+            <button class="btn good" id="gSave">Guardar gasto</button>
+            <p class="help">Pide siempre factura con tu NIF: con un tique simplificado normalmente no se puede deducir el IVA. Qué es deducible lo decide tu gestor; la app solo lo ordena.</p>
+          </div>
+          <div class="panel">
+            <div class="inline" style="justify-content:space-between"><h2 style="margin:0">Trimestre</h2><select id="qSel" style="min-height:46px;border-radius:10px;padding:6px 10px;border:1px solid var(--line);background:var(--bg)"></select></div>
+            <div class="stats" id="qStats" style="margin-top:10px"></div>
+            <div class="list" id="qCats" style="margin-top:8px"></div>
+            <div class="inline" style="margin:10px 0"><button class="btn small primary" id="qExport">Exportar trimestre para el gestor (CSV)</button></div>
+            <div class="list" id="gList"></div>
           </div>
         </div>
         <div class="panel">
@@ -535,6 +567,7 @@ revoke all on public.copiloto_datos from anon;</pre>
               <div class="item"><div class="t">Ruta que te queda</div><div class="m">«¿Qué ruta me queda?» · «Enséñame el recorrido en el mapa» · «¿Cuánto tiempo me queda?» · «¿A qué hora termino?» · «Añade la vuelta a la base» · «Terminando en casa» · «Sin vuelta» · «Llévame a casa»</div></div>
               <div class="item"><div class="t">Notas y sitios</div><div class="m">«Apunta que el código del portal es 1234» · «Nota para la parada 12: dejar en conserjería» · «Lee las notas» · «Guarda este aparcamiento como mercado»</div></div>
               <div class="item"><div class="t">Gasóleo</div><div class="m">«¿Dónde echo gasoil más barato?» · «Llévame a la gasolinera» · «He echado 48 litros a 1,43, 142350 kilómetros» · «¿Cuánto llevo gastado este mes?» · «¿Qué consumo tengo?»</div></div>
+              <div class="item"><div class="t">Gastos y kilómetros</div><div class="m">«He pagado 3,50 de peaje» · «Apunta 12 euros de aparcamiento» · «180 euros de taller» · «Empiezo con 142350 kilómetros» · «Termino con 142480 kilómetros» · «¿Cuánto llevo gastado este trimestre?»</div></div>
               <div class="item"><div class="t">Mapa y tráfico</div><div class="m">«Vista satélite» · «Mapa normal» · «¿Hay atasco?» · «Quita el tráfico» · «Llévame con Waze» · «Enséñame el portal»</div></div>
               <div class="item"><div class="t">Si algo sale mal</div><div class="m">«Deshacer» o «me he equivocado» · «Repite» · «Para» · «Ayuda»</div></div>
             </div>
@@ -605,7 +638,7 @@ revoke all on public.copiloto_datos from anon;</pre>
 /* ================= constants & storage ================= */
 const API="https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/EstacionesTerrestres/FiltroProvinciaProducto/";
 const GASOLEO_A=4;
-const K={set:"dc:settings",logs:"dc:logs",st:"dc:stations",route:"dc:route",geo:"dc:geocache",notes:"dc:notes",spots:"dc:spots",hist:"dc:history"};
+const K={set:"dc:settings",logs:"dc:logs",gastos:"dc:gastos",st:"dc:stations",route:"dc:route",geo:"dc:geocache",notes:"dc:notes",spots:"dc:spots",hist:"dc:history"};
 const DEFAULTS={liters:50,cons:8.5,hour:0,speed:30,radius:10,factor:1.3,provs:["28"],home:"",base:"",disc:0,brands:"",proxy:"",theme:"auto",
   walk:180,maxStops:8,offMap:true,stopMin:4,parkMin:2,osrm:true,routeFinal:"none",maxPkg:10,snap:150,town:"",alert:80,vibe:true,walkFactor:1.25,voiceReply:true,voiceAlerts:true,voiceRate:1,gKey:"",gMap:true,gGeo:true,gType:"roadmap",gTraffic:false,ccGeo:true,navApp:"google",aiVoice:false,aiLabel:false,
   zones:"Junto a la puerta trasera\nJunto a la puerta lateral\nCentro izquierda\nCentro derecha\nFondo izquierda\nFondo derecha"};
@@ -613,6 +646,7 @@ const COLORS=["#1F5FBF","#D9480F","#2B8A3E","#862E9C","#C2255C","#0B7285","#5C94
 const ls={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},
   set(k,v){try{localStorage.setItem(k,JSON.stringify(v));return true}catch(e){toast("No se pudo guardar: memoria del navegador llena");return false}}};
 let S=Object.assign({},DEFAULTS,ls.get(K.set,{}));
+let gastos=ls.get(K.gastos,[]);
 let logs=ls.get(K.logs,[]), cache=ls.get(K.st,null), geo=ls.get(K.geo,{}), notes=ls.get(K.notes,[]), spots=ls.get(K.spots,[]), hist=ls.get(K.hist,[]);
 let route=ls.get(K.route,null)||newRoute();
 /* fecha local (Madrid), no UTC: entre las 00:00 y las 02:00 la UTC es todavía el día anterior */
@@ -1250,12 +1284,14 @@ function dayStats(){
   const starts=Object.values(route.times).map(t=>t.arrive).filter(Boolean),ends=done.map(s=>s.doneAt).filter(Boolean);
   const hours=starts.length&&ends.length?(Math.max(...ends)-Math.min(...starts))/3600000:null;
   const saved=r?Math.max(0,r.base-r.drive):0;
-  return{stops:route.stops.length,done:done.length,delivered:done.filter(s=>!s.fail&&!s.cancel).length,failed:done.filter(s=>s.fail).length,tramos:route.tramos.length,drive:r?r.drive:0,base:r?r.base:0,walk:r?r.walk:0,saved,savedEur:saved*consumption()/100*fuelPrice(),walkMin,perHour:hours&&hours>0.1?done.length/hours:null};
+  const o0=+route.odoStart,o1=+route.odoEnd,km=o0>0&&o1>o0&&o1-o0<2000?o1-o0:null;
+  return{odoStart:o0>0?o0:null,odoEnd:o1>0?o1:null,km,stops:route.stops.length,done:done.length,delivered:done.filter(s=>!s.fail&&!s.cancel).length,failed:done.filter(s=>s.fail).length,tramos:route.tramos.length,drive:r?r.drive:0,base:r?r.base:0,walk:r?r.walk:0,saved,savedEur:saved*consumption()/100*fuelPrice(),walkMin,perHour:hours&&hours>0.1?done.length/hours:null};
 }
 function renderStats(){
   const d=dayStats();
   $("#dayStats").innerHTML=`
     <div class="stat"><b>${d.delivered}/${d.stops}</b><span>Paradas entregadas</span></div>
+    ${d.km!=null?`<div class="stat"><b>${d.km.toLocaleString("es-ES")} km</b><span>Recorridos hoy (cuentakilómetros)</span></div>`:""}
     <div class="stat"><b>${d.failed}</b><span>No entregadas (a devolver)</span></div>
     <div class="stat"><b>${d.tramos}</b><span>Grupos (veces que aparcas)</span></div>
     <div class="stat"><b>${eur(d.drive,1)} km</b><span>Conducción estimada</span></div>
@@ -1264,8 +1300,10 @@ function renderStats(){
     <div class="stat"><b>${eur(d.walk,1)} km</b><span>A pie estimados</span></div>
     <div class="stat"><b>${d.walkMin!=null?eur(d.walkMin,0)+" min":"—"}</b><span>Media por grupo</span></div>
     <div class="stat"><b>${d.perHour!=null?eur(d.perHour,1):"—"}</b><span>Paradas por hora</span></div>`;
-  renderFuelStats();renderLogs();
-  $("#histList").innerHTML=hist.length?[...hist].reverse().map(h=>`<div class="item"><div class="t">${new Date(h.date).toLocaleDateString("es-ES",{weekday:"short",day:"numeric",month:"short"})} · ${h.delivered??h.done}/${h.stops} paradas entregadas${h.failed?" · "+h.failed+" no entregada"+(h.failed>1?"s":""):""} · ${h.tramos} grupos</div>
+  renderFuelStats();renderLogs();renderGastos();
+  $("#dOdo0").value=route.odoStart||"";$("#dOdo1").value=route.odoEnd||"";
+  const lastEnd=[...hist].reverse().find(h=>h.odoEnd);$("#dOdo0").placeholder=lastEnd?"Ayer terminaste en "+lastEnd.odoEnd:"Cuentakilómetros";
+  $("#histList").innerHTML=hist.length?[...hist].reverse().map(h=>`<div class="item"><div class="t">${new Date(h.date).toLocaleDateString("es-ES",{weekday:"short",day:"numeric",month:"short"})} · ${h.delivered??h.done}/${h.stops} paradas entregadas${h.km?" · "+h.km+" km":""}${h.failed?" · "+h.failed+" no entregada"+(h.failed>1?"s":""):""} · ${h.tramos} grupos</div>
     <div class="m">${eur(h.drive,1)} km conduciendo · ${eur(h.saved,1)} km ahorrados (${eur(h.savedEur)} €) · ${eur(h.walk,1)} km a pie${h.perHour?" · "+eur(h.perHour,1)+" paradas/h":""}</div></div>`).join(""):'<div class="empty">Aún no has cerrado ninguna jornada.</div>';
 }
 function archiveDay(){const d=dayStats();hist.push({date:route.date,...d});if(hist.length>400)hist.shift();ls.set(K.hist,hist);route.closed=true;saveRoute()}
@@ -1330,6 +1368,90 @@ function drawFuelMap(r){
 }
 $$(".seg button").forEach(b=>b.addEventListener("click",()=>{fuelRef=b.dataset.ref;fuelSel=null;$$(".seg button").forEach(x=>x.setAttribute("aria-pressed",x===b));renderFuel()}));
 $("#refreshBtn").addEventListener("click",()=>loadStations(true));
+
+/* ================= GASTOS DE AUTÓNOMO Y TRIMESTRE ================= */
+const CATS={peaje:["Peajes",21],parking:["Aparcamiento",21],taller:["Taller y mantenimiento",21],neumaticos:["Neumáticos",21],itv:["ITV",21],
+  seguro:["Seguro",0],lavado:["Lavado",21],movil:["Móvil y datos",21],material:["Material de trabajo",21],cuota:["Cuota de autónomos",0],gestoria:["Gestoría",21],otros:["Otros",21]};
+$("#gCat").innerHTML=Object.entries(CATS).map(([k,[n]])=>`<option value="${k}">${n}</option>`).join("");
+$("#gCat").addEventListener("change",()=>{$("#gIva").value=String(CATS[$("#gCat").value][1])});
+$("#gDate").value=hoyLocal();
+const r2=v=>Math.round(v*100)/100;
+const baseOfTotal=(total,iva)=>r2(total/(1+iva/100));
+const quarterOf=d=>{const y=+String(d).slice(0,4),mo=+String(d).slice(5,7);return y+"-"+Math.ceil(mo/3)};
+const qLabel=q=>{const[y,n]=q.split("-");return n+"º trimestre "+y};
+function quarterList(){const set=new Set([quarterOf(hoyLocal())]);[...gastos.map(g=>g.date),...logs.map(l=>l.date),...hist.map(h=>h.date)].forEach(d=>d&&set.add(quarterOf(d)));
+  return[...set].sort().reverse()}
+/* todo lo del trimestre: gastos anotados + repostajes (gasóleo con IVA 21 %) */
+function quarterRows(q){
+  const R=[];
+  for(const g of gastos)if(quarterOf(g.date)===q){const b=baseOfTotal(g.total,g.iva);R.push({date:g.date,tipo:"Gasto",cat:(CATS[g.cat]||CATS.otros)[0],prov:g.prov||"",num:g.num||"",base:b,iva:g.iva,cuota:r2(g.total-b),total:r2(g.total),km:"",litros:"",nota:g.nota||"",id:g.id,photo:g.photo})}
+  for(const l of logs)if(quarterOf(l.date)===q){const t=r2(l.liters*l.price),b=baseOfTotal(t,21);R.push({date:l.date.slice(0,10),tipo:"Repostaje",cat:"Gasóleo",prov:l.station||"",num:"",base:b,iva:21,cuota:r2(t-b),total:t,km:isFinite(l.odo)?l.odo:"",litros:l.liters,nota:l.full?"Depósito lleno":"",id:l.id,photo:l.photo,log:true})}
+  return R.sort((a,b)=>a.date.localeCompare(b.date));
+}
+function quarterDays(q){const D=hist.filter(h=>quarterOf(h.date)===q).map(h=>({date:h.date,o0:h.odoStart||"",o1:h.odoEnd||"",km:h.km||"",ok:h.delivered??h.done,fail:h.failed||0}));
+  if(quarterOf(route.date)===q&&!route.closed&&route.stops.length){const d=dayStats();D.push({date:route.date,o0:d.odoStart||"",o1:d.odoEnd||"",km:d.km||"",ok:d.delivered,fail:d.failed,open:true})}
+  return D.sort((a,b)=>a.date.localeCompare(b.date))}
+function renderGastos(){
+  const Q=quarterList(),sel=$("#qSel"),cur=sel.value&&Q.includes(sel.value)?sel.value:Q[0];
+  sel.innerHTML=Q.map(q=>`<option value="${q}" ${q===cur?"selected":""}>${qLabel(q)}</option>`).join("");
+  const R=quarterRows(cur),D=quarterDays(cur),sum=f=>r2(R.reduce((a,x)=>a+f(x),0)),km=D.reduce((a,x)=>a+(+x.km||0),0);
+  $("#qStats").innerHTML=`<div class="stat"><b>${eur(sum(x=>x.total))} €</b><span>Gastos (con IVA)</span></div>
+    <div class="stat"><b>${eur(sum(x=>x.cuota))} €</b><span>IVA soportado</span></div>
+    <div class="stat"><b>${eur(sum(x=>x.base))} €</b><span>Base imponible</span></div>
+    <div class="stat"><b>${km?km.toLocaleString("es-ES")+" km":"—"}</b><span>Km de trabajo (${D.length} jornadas)</span></div>`;
+  const byCat={};R.forEach(x=>{const c=byCat[x.cat]||(byCat[x.cat]={n:0,t:0,i:0});c.n++;c.t+=x.total;c.i+=x.cuota});
+  $("#qCats").innerHTML=Object.entries(byCat).sort((a,b)=>b[1].t-a[1].t).map(([c,v])=>`<div class="item"><div class="t">${esc(c)} · ${eur(v.t)} €</div><div class="m">${v.n} apunte${v.n>1?"s":""} · IVA ${eur(v.i)} €</div></div>`).join("")||'<div class="empty">Sin gastos en este trimestre.</div>';
+  const G=gastos.filter(g=>quarterOf(g.date)===cur).sort((a,b)=>b.date.localeCompare(a.date));
+  $("#gList").innerHTML=G.length?`<h3>Gastos anotados</h3>`+G.map(g=>`<div class="item"><div class="t">${new Date(g.date+"T12:00").toLocaleDateString("es-ES",{day:"numeric",month:"short"})} · ${esc((CATS[g.cat]||CATS.otros)[0])} · ${eur(g.total)} €</div>
+    <div class="a">${g.photo?`<button class="btn small" data-photo="${g.id}">Factura</button>`:""}<button class="btn small bad" data-delgasto="${g.id}">Borrar</button></div>
+    <div class="m">${g.iva?"IVA "+g.iva+" %":"Sin IVA"}${g.prov?" · "+esc(g.prov):""}${g.num?" · fra. "+esc(g.num):""}${g.nota?" · "+esc(g.nota):""}</div></div>`).join(""):"";
+}
+function addGasto(g){g={id:uid(),date:g.date||hoyLocal(),cat:CATS[g.cat]?g.cat:"otros",total:r2(g.total),iva:g.iva??CATS[g.cat||"otros"][1],prov:g.prov||"",num:g.num||"",nota:g.nota||"",photo:!!g.photo};
+  gastos.push(g);ls.set(K.gastos,gastos);return g}
+$("#gSave").addEventListener("click",async()=>{
+  const total=num($("#gTotal").value);if(!(total>0)){toast("Indica el importe");return}
+  const g=addGasto({date:$("#gDate").value||hoyLocal(),cat:$("#gCat").value,total,iva:+$("#gIva").value,prov:$("#gProv").value.trim(),num:$("#gNum").value.trim(),nota:$("#gNota").value.trim()});
+  const f=$("#gPhoto").files[0];if(f){const d=await compress(f);if(d&&await idb.put(g.id,d)){g.photo=true;ls.set(K.gastos,gastos)}}
+  ["#gTotal","#gProv","#gNum","#gNota"].forEach(x=>$(x).value="");$("#gPhoto").value="";
+  pushUndo(()=>{gastos=gastos.filter(x=>x.id!==g.id);idb.del(g.id);ls.set(K.gastos,gastos)},"el gasto");renderGastos();toast("Gasto guardado: "+(CATS[g.cat][0])+" "+eur(g.total)+" €",true)});
+$("#qSel").addEventListener("change",renderGastos);
+document.addEventListener("click",e=>{const b=e.target.closest("[data-delgasto]");if(!b)return;if(!confirm("¿Borrar este gasto?"))return;
+  const id=b.dataset.delgasto;gastos=gastos.filter(x=>x.id!==id);idb.del(id);ls.set(K.gastos,gastos);renderGastos()});
+function setOdo(which,v){const n=Math.round(num(v));if(v===""||v==null){delete route[which]}else if(n>0&&n<3000000)route[which]=n;else return false;saveRoute();return true}
+$("#dOdo0").addEventListener("change",e=>{if(!setOdo("odoStart",e.target.value))toast("Revisa los kilómetros");renderStats()});
+$("#dOdo1").addEventListener("change",e=>{if(!setOdo("odoEnd",e.target.value))toast("Revisa los kilómetros");else if(route.odoStart&&route.odoEnd&&route.odoEnd<route.odoStart)toast("Los km al terminar son menores que al empezar");renderStats()});
+/* CSV para el gestor: apuntes del trimestre, resumen por tipo y km por jornada (separador «;», decimales con coma) */
+$("#qExport").addEventListener("click",()=>{
+  const q=$("#qSel").value||quarterOf(hoyLocal()),R=quarterRows(q),D=quarterDays(q);
+  const n=v=>v===""||v==null||!isFinite(v)?"":String(v).replace(".",","),t=v=>'"'+String(v??"").replace(/"/g,'""')+'"';
+  const e2=v=>isFinite(v)?(+v).toFixed(2).replace(".",","):"";
+  const L=[[t("Copiloto de reparto · "+qLabel(q))],[],
+    ["Fecha","Tipo","Categoría","Proveedor","Nº factura","Base imponible €","% IVA","Cuota IVA €","Total €","Km","Litros","Nota"].map(t)];
+  R.forEach(x=>L.push([x.date,t(x.tipo),t(x.cat),t(x.prov),t(x.num),e2(x.base),n(x.iva),e2(x.cuota),e2(x.total),n(x.km),n(x.litros),t(x.nota)]));
+  const S2=f=>r2(R.reduce((a,x)=>a+f(x),0));
+  L.push(["","","","",t("TOTAL"),e2(S2(x=>x.base)),"",e2(S2(x=>x.cuota)),e2(S2(x=>x.total))]);
+  L.push([],[t("Resumen por tipo")],["Categoría","Apuntes","Base imponible €","Cuota IVA €","Total €"].map(t));
+  const C={};R.forEach(x=>{const c=C[x.cat]||(C[x.cat]={k:0,b:0,i:0,t:0});c.k++;c.b+=x.base;c.i+=x.cuota;c.t+=x.total});
+  Object.entries(C).forEach(([c,v])=>L.push([t(c),v.k,e2(v.b),e2(v.i),e2(v.t)]));
+  L.push([],[t("Kilómetros por jornada")],["Fecha","Km inicio","Km fin","Km recorridos","Paradas entregadas","No entregadas"].map(t));
+  D.forEach(x=>L.push([x.date,n(x.o0),n(x.o1),n(x.km),x.ok,x.fail]));
+  L.push(["",t("TOTAL"),"",n(D.reduce((a,x)=>a+(+x.km||0),0))]);
+  download("gastos-"+q.replace("-","-T")+".csv","﻿"+L.map(r=>r.join(";")).join("\r\n"),"text/csv;charset=utf-8");
+});
+function vGasto(t){
+  const am=t.match(/(\d+(?:\.\d{1,2})?)(?: (?:euros?|eur))?/);const total=am?+am[1]:NaN;
+  const cat=/(peaje|autopista|radial)/.test(t)?"peaje":/(aparcamiento|aparcar|parking|parquin|zona azul|zona verde|\bora\b|\bser\b|parquimetro)/.test(t)?"parking"
+    :/(taller|mecanico|aceite|revision|reparacion|frenos|embrague|bateria|mantenimiento)/.test(t)?"taller":/(rueda|neumatico|pinchazo)/.test(t)?"neumaticos"
+    :/\bitv\b/.test(t)?"itv":/seguro/.test(t)?"seguro":/(lavado|lavar|lavadero)/.test(t)?"lavado":/(movil|telefono|datos|tarifa)/.test(t)?"movil"
+    :/(gestor|gestoria|asesor)/.test(t)?"gestoria":/(cuota|autonomos|seguridad social)/.test(t)?"cuota":/(material|carro|cinta|bolsas|guantes|chaleco)/.test(t)?"material":"otros";
+  if(!(total>0&&total<20000)){say(`¿Cuánto ha costado? Dilo así: «he pagado 3 coma 50 de ${CATS[cat][0].toLowerCase()}».`);return}
+  const g=addGasto({cat,total});pushUndo(()=>{gastos=gastos.filter(x=>x.id!==g.id);ls.set(K.gastos,gastos)},"el gasto");refreshActive();
+  say(`Gasto guardado: ${CATS[cat][0].toLowerCase()}, ${eur(total)} euros${g.iva?", con IVA del "+g.iva+" por ciento":""}. Si tienes factura, añade la foto en Cuentas.`)}
+function vOdo(which,t){const m=t.match(/\b(\d{4,7})\b/);if(!m){say("Dime los kilómetros del cuentakilómetros, por ejemplo: empiezo con 142350 kilómetros.");return}
+  const prev=route[which];setOdo(which,m[1]);pushUndo(()=>{if(prev)route[which]=prev;else delete route[which];saveRoute()},"los kilómetros");refreshActive();
+  const d=dayStats();say(which==="odoStart"?`Kilómetros al empezar: ${m[1]}.`:`Kilómetros al terminar: ${m[1]}.${d.km!=null?" Hoy has hecho "+d.km+" kilómetros.":""}`)}
+function vQuarter(){const q=quarterOf(hoyLocal()),R=quarterRows(q),D=quarterDays(q);const tot=r2(R.reduce((a,x)=>a+x.total,0)),iva=r2(R.reduce((a,x)=>a+x.cuota,0)),km=D.reduce((a,x)=>a+(+x.km||0),0);
+  say(R.length?`Este trimestre llevas ${eur(tot)} euros de gastos, con ${eur(iva)} de IVA soportado${km?", y "+km+" kilómetros de trabajo":""}.`:"Este trimestre todavía no has anotado gastos.")}
 
 /* ================= FUEL LOGS ================= */
 function nowLocal(){const d=new Date();d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,16)}
@@ -1799,6 +1921,12 @@ function route_(t){
   mm=t.match(/^(?:apunta|apuntar|anota|anotar|recuerda|recuerdame|apuntate|guarda|guardar)(?: (?:una nota|en la nota|nota))? que (.+)$/);if(mm)return()=>vNote(null,mm[1]);
   mm=t.match(/^(?:anade |anadir |agrega |agregar |apunta |apuntar |anota |anotar |guarda |guardar |pon |poner |crea |nueva )?(?:una |la |otra )?nota(?: para| en| de| a)?(?: la)?(?: parada)?(?: (\d+))?(?: que dice| dice| que| diciendo)?\s*(.*)$/);if(mm&&mm[2])return()=>vNote(mm[1],mm[2]);
   mm=t.match(/(?:lee|leer|leeme|dime|hay|tiene|que dicen|que dice|cuales son)(?: las| alguna| la)? notas?(?: de| para)?(?: la| esta| este)?(?: parada| portal| casa)?(?: (\d+))?/);if(mm)return()=>vReadNotes(mm[1]);
+  /* gastos de autónomo, km de la jornada y trimestre */
+  if(/trimestr/.test(t)&&/(gast|llevo|iva|cuanto|resumen)/.test(t))return vQuarter;
+  if(/(kilometros|km|cuentakilometros)/.test(t)&&/\b\d{4,7}\b/.test(t)&&!/litro/.test(t)){
+    if(/(empiezo|empezamos|salgo|inicio|arranco|al empezar|al salir|de salida|inicial)/.test(t))return()=>vOdo("odoStart",t);
+    if(/(termino|acabo|he terminado|he acabado|al terminar|al acabar|al llegar|final|cierro|de llegada)/.test(t))return()=>vOdo("odoEnd",t);}
+  if(!/litro/.test(t)&&/\d/.test(t)&&/(pagado|pague|pago|gasto|gastado|me ha costado|me han cobrado|apunta|anota|euros)/.test(t)&&/(peaje|autopista|radial|aparcamiento|parking|parquin|zona azul|zona verde|\bora\b|parquimetro|taller|mecanico|aceite|revision|reparacion|frenos|rueda|neumatico|pinchazo|\bitv\b|seguro|lavado|lavar|lavadero|movil|telefono|gestor|gestoria|cuota|autonomos|material|guantes|chaleco)/.test(t))return()=>vGasto(t);
   /* repostaje anotado */
   if(/\blitros?\b/.test(t)&&/(repostaje|repostado|reposte|echado|eche|puesto|puse|cargado|cargue|metido|meti|llenado|llene|anota|apunta)/.test(t))return()=>vFuelLog(t);
   /* mapa, tráfico, portal */
@@ -1898,12 +2026,16 @@ async function aiRun(a){
     case"calcular_grupos":return vCalc();
     case"consultar":{const q=g.que,n=int(g.numero);
       return({siguiente:vNext,cuantas_quedan:vRemaining,lista_paradas:vList,que_paquetes_coger:vZone,resumen_dia:vSummary,
-        gasto_gasoil_mes:vSpent,consumo:vCons,gasolinera_barata:()=>vFuel(false),notas_parada:()=>vReadNotes(n),devoluciones:vReturns}[q]||(()=>say("No sé responder a eso todavía.")))()}
+        gasto_gasoil_mes:vSpent,consumo:vCons,gasolinera_barata:()=>vFuel(false),notas_parada:()=>vReadNotes(n),devoluciones:vReturns,gastos_trimestre:vQuarter}[q]||(()=>say("No sé responder a eso todavía.")))()}
     case"navegar":{if(g.destino==="gasolinera")return vFuel(true);if(g.destino==="base"||g.destino==="casa")return vGoFinal(g.destino);return g.app==="waze"?vWaze("llevame waze"):vGoPark()}
     case"mapa":{const v=g.vista;if(v==="satelite")return vMapType("satellite");if(v==="hibrido")return vMapType("hybrid");if(v==="mapa")return vMapType("roadmap");
       if(v==="trafico_on")return vTraffic(true);if(v==="trafico_off")return vTraffic(false);if(v==="portal")return vStreet(int(g.numero));return}
     case"abrir_pestana":{const id=TABS[g.pestana];if(id){showView(id);say("Abro "+g.pestana+".")}return}
     case"ruta_restante":{const f={base:"base",casa:"home",ninguno:"none"}[g.final];return showRemaining(f||null,{voice:true})}
+    case"anotar_gasto":{const c=CATS[g.categoria]?g.categoria:"otros",tot=Number(g.importe);if(!(tot>0&&tot<20000)){say("¿Cuánto ha costado?");return}
+      const x=addGasto({cat:c,total:tot,prov:str(g.proveedor,60)});pushUndo(()=>{gastos=gastos.filter(y=>y.id!==x.id);ls.set(K.gastos,gastos)},"el gasto");refreshActive();
+      say(`Gasto guardado: ${CATS[c][0].toLowerCase()}, ${eur(tot)} euros.`);return}
+    case"kilometros_jornada":{const km=Math.round(Number(g.kilometros));if(!(km>0))return say("Dime los kilómetros del cuentakilómetros.");return vOdo(g.momento==="fin"?"odoEnd":"odoStart",String(km))}
     case"deshacer":return vUndo();
   }
 }
@@ -2027,7 +2159,7 @@ $("#wzApp").addEventListener("click",()=>{window.open("https://waze.com/ul?ll="+
 const SB_LIB="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js";
 const SB_DEF={url:"https://ylpxwcmwysjvnikcklzr.supabase.co",key:"sb_publishable_oi3k6oiqSHZQRczH4YvRlQ_kamtt0gG"};
 const SB_TABLE="copiloto_datos";
-const SYNC={[K.set]:"ajustes",[K.notes]:"notas",[K.spots]:"aparcamientos",[K.logs]:"repostajes",[K.hist]:"historial",[K.route]:"ruta",[K.geo]:"ubicaciones"};
+const SYNC={[K.gastos]:"gastos",[K.set]:"ajustes",[K.notes]:"notas",[K.spots]:"aparcamientos",[K.logs]:"repostajes",[K.hist]:"historial",[K.route]:"ruta",[K.geo]:"ubicaciones"};
 const CLAVE2K=Object.fromEntries(Object.entries(SYNC).map(([k,c])=>[c,k]));
 let cloud=Object.assign({},SB_DEF,ls.get("dc:cloud",{}));
 let sb=null,sbUser=null,syncMeta=ls.get("dc:syncmeta",{}),pushTimer=null,syncing=false,cloudErr="",lastSyncOk=0,tableMissing=false;
@@ -2044,6 +2176,7 @@ function applyLocal(k,v){
   else if(k===K.notes){notes=v||[];fillDatalist()}
   else if(k===K.spots)spots=v||[];
   else if(k===K.logs)logs=v||[];
+  else if(k===K.gastos)gastos=v||[];
   else if(k===K.hist)hist=v||[];
   else if(k===K.geo){geo=Object.assign({},v||{},Object.fromEntries(Object.entries(geo).filter(([a,g])=>g.src==="g"&&!g.manual)));applyingRemote=true;try{rawSet(K.geo,geo)}finally{applyingRemote=false};fillDatalist()}
   else if(k===K.route){route=v||newRoute();$("#qSeq").value=nextSeq();checkNewDay()}
@@ -2051,7 +2184,7 @@ function applyLocal(k,v){
 function unionBy(a,b,key){const m=new Map();for(const x of [...(b||[]),...(a||[])]){const id=key(x);if(!m.has(id))m.set(id,x)}return[...m.values()]}
 function mergeFirst(k,local,remote){
   if(k===K.notes)return unionBy(local,remote,x=>x.key||x.id);
-  if(k===K.spots||k===K.logs)return unionBy(local,remote,x=>x.id);
+  if(k===K.spots||k===K.logs||k===K.gastos)return unionBy(local,remote,x=>x.id);
   if(k===K.hist)return unionBy(local,remote,x=>x.date+"|"+x.stops+"|"+x.done).sort((x,y)=>String(x.date).localeCompare(String(y.date)));
   if(k===K.geo){const o=Object.assign({},remote||{});for(const[a,g]of Object.entries(local||{}))if(!o[a]||g.manual)o[a]=g;return o}
   if(k===K.route){const l=local&&local.stops&&local.stops.length,r=remote&&remote.stops&&remote.stops.length;return l&&(!r||local.date>=remote.date)?local:remote}
@@ -2078,7 +2211,7 @@ function isMissingTable(err){return err&&(err.code==="42P01"||err.code==="PGRST2
 /* Mezcla a tres bandas (local, nube y la última versión sincronizada = «base») para listas con id.
    Así, si en la tablet y en el ordenador se cambian cosas distintas a la vez, se conservan las dos,
    y lo borrado en un lado no reaparece. */
-const LISTKEY={[K.notes]:x=>x.key||x.id,[K.spots]:x=>x.id,[K.logs]:x=>x.id,[K.hist]:x=>x.date+"|"+x.stops+"|"+x.done};
+const LISTKEY={[K.gastos]:x=>x.id,[K.notes]:x=>x.key||x.id,[K.spots]:x=>x.id,[K.logs]:x=>x.id,[K.hist]:x=>x.date+"|"+x.stops+"|"+x.done};
 function hstr(s){let h=5381;for(let i=0;i<s.length;i++)h=((h<<5)+h+s.charCodeAt(i))|0;return(h>>>0).toString(36)}
 function baseOf(k,v){const f=LISTKEY[k];if(!f||!Array.isArray(v))return null;const o={};for(const x of v)o[f(x)]=hstr(JSON.stringify(x));return o}
 function merge3(k,local,remote,base){
