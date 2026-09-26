@@ -364,6 +364,10 @@ body:has(.sv-view[style*="flex"]) .vpanel{z-index:3250;bottom:calc(16px + env(sa
             <div class="field"><label for="sSnap">Buscar aparcamiento guardado a menos de (m)</label><input id="sSnap" type="number" inputmode="numeric"></div>
             <div class="field"><label for="sTown">Localidad por defecto para las direcciones</label><input id="sTown" type="text" placeholder="Alcalá de Henares"></div>
             <p class="help">Se añade a las direcciones que no llevan código postal ni localidad, para encontrarlas mejor.</p>
+            <h3>Tiempo estimado de la ruta</h3>
+            <div class="field"><label for="sStopMin">Minutos por entrega (sin contar caminar)</label><input id="sStopMin" type="number" inputmode="decimal" step="0.5" min="0.5"></div>
+            <div class="field"><label for="sParkMin">Minutos para aparcar en cada grupo</label><input id="sParkMin" type="number" inputmode="decimal" step="0.5" min="0"></div>
+            <p class="help">Cuando termines dos grupos, la app usa tu ritmo real del día.</p>
           </div>
           <div class="panel">
             <h2>Carga de la furgoneta</h2>
@@ -471,6 +475,8 @@ revoke all on public.copiloto_datos from anon;</pre>
             <div class="field"><label for="sNav">Navegador para ir a cada aparcamiento</label><select id="sNav"><option value="google">Google Maps</option><option value="waze">Waze</option></select></div>
             <label class="check"><input id="sCC" type="checkbox"> Localizar direcciones con CartoCiudad (recomendado)</label>
             <p class="help">Si CartoCiudad no encuentra una dirección, se prueba con OpenStreetMap.</p>
+            <label class="check"><input id="sOsrm" type="checkbox"> Dibujar la ruta que me queda por las calles (OSRM)</label>
+            <p class="help">Servicio gratuito de rutas: solo recibe las coordenadas de los aparcamientos. Sin él, se usa una estimación en línea recta.</p>
           </div>
           <div class="panel" id="gPanel">
             <details id="gDetails"><summary style="cursor:pointer;font-weight:700;font-size:21px;min-height:48px;display:flex;align-items:center">Google Maps con clave (opcional, avanzado)</summary>
@@ -519,6 +525,7 @@ revoke all on public.copiloto_datos from anon;</pre>
               <div class="item"><div class="t">Qué es un grupo</div><div class="m">Paradas seguidas que puedes hacer a pie desde un mismo aparcamiento. La app te dice dónde aparcar (G1, G2…) y qué paquetes coger.</div></div>
               <div class="item"><div class="t">Durante el reparto</div><div class="m">«¿Dónde aparco?» · «Siguiente» · «Llévame» · «He aparcado» · «Entregada» o «Listo» · «Entregada la 25» · «Grupo terminado» · «Estoy en la puerta» (guarda la ubicación exacta)</div></div>
               <div class="item"><div class="t">Preguntas</div><div class="m">«¿Cuántas me quedan?» · «¿Qué paradas me quedan?» · «¿Qué paquetes cojo?» · «¿Cómo voy?»</div></div>
+              <div class="item"><div class="t">Ruta que te queda</div><div class="m">«¿Qué ruta me queda?» · «Enséñame el recorrido en el mapa» · «¿Cuánto tiempo me queda?» · «¿A qué hora termino?» · «Añade la vuelta a la base» · «Terminando en casa» · «Sin vuelta» · «Llévame a casa»</div></div>
               <div class="item"><div class="t">Notas y sitios</div><div class="m">«Apunta que el código del portal es 1234» · «Nota para la parada 12: dejar en conserjería» · «Lee las notas» · «Guarda este aparcamiento como mercado»</div></div>
               <div class="item"><div class="t">Gasóleo</div><div class="m">«¿Dónde echo gasoil más barato?» · «Llévame a la gasolinera» · «He echado 48 litros a 1,43, 142350 kilómetros» · «¿Cuánto llevo gastado este mes?» · «¿Qué consumo tengo?»</div></div>
               <div class="item"><div class="t">Mapa y tráfico</div><div class="m">«Vista satélite» · «Mapa normal» · «¿Hay atasco?» · «Quita el tráfico» · «Llévame con Waze» · «Enséñame el portal»</div></div>
@@ -589,7 +596,7 @@ const API="https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/Prec
 const GASOLEO_A=4;
 const K={set:"dc:settings",logs:"dc:logs",st:"dc:stations",route:"dc:route",geo:"dc:geocache",notes:"dc:notes",spots:"dc:spots",hist:"dc:history"};
 const DEFAULTS={liters:50,cons:8.5,hour:0,speed:30,radius:10,factor:1.3,provs:["28"],home:"",base:"",disc:0,brands:"",proxy:"",theme:"auto",
-  walk:180,maxStops:8,maxPkg:10,snap:150,town:"",alert:80,vibe:true,walkFactor:1.25,voiceReply:true,voiceAlerts:true,voiceRate:1,gKey:"",gMap:true,gGeo:true,gType:"roadmap",gTraffic:false,ccGeo:true,navApp:"google",aiVoice:false,aiLabel:false,
+  walk:180,maxStops:8,stopMin:4,parkMin:2,osrm:true,routeFinal:"none",maxPkg:10,snap:150,town:"",alert:80,vibe:true,walkFactor:1.25,voiceReply:true,voiceAlerts:true,voiceRate:1,gKey:"",gMap:true,gGeo:true,gType:"roadmap",gTraffic:false,ccGeo:true,navApp:"google",aiVoice:false,aiLabel:false,
   zones:"Junto a la puerta trasera\nJunto a la puerta lateral\nCentro izquierda\nCentro derecha\nFondo izquierda\nFondo derecha"};
 const COLORS=["#1F5FBF","#D9480F","#2B8A3E","#862E9C","#C2255C","#0B7285","#5C940D","#E67700"];
 const ls={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},
@@ -1027,11 +1034,12 @@ function renderDeliv(refit=true){
   const col=$("#delivCol");
   if(!route.tramos.length){col.innerHTML='<div class="panel empty">Calcula los grupos en la pestaña Ruta para empezar el reparto.</div>';drawDelivMap(null,refit);return}
   const t=currentTramo();
+  if(!t)RV=null;else refreshRemainingIfStale();
   if(!t){col.innerHTML=`<div class="panel"><h2>Ruta terminada</h2><p class="help">Todas las paradas están marcadas como entregadas. Cierra la jornada en la pestaña Cuentas.</p></div>`;drawDelivMap(null,refit);return}
   const ss=t.stopIds.map(byId),tm=route.times[t.idx]||{},pk=ss.reduce((a,s)=>a+s.pkgs,0);
   const dist=here&&t.park?m(here,t.park):null;
   const doneN=route.stops.filter(s=>s.done).length;
-  let html=`<div class="status">${doneN} de ${route.stops.length} paradas hechas · grupo ${t.idx+1} de ${route.tramos.length}</div>
+  let html=(RV?remainingPanel():`<button class="btn" data-rvshow="1" style="width:100%">Ver la ruta que me queda y cuánto tardo</button>`)+`<div class="status">${doneN} de ${route.stops.length} paradas hechas · grupo ${t.idx+1} de ${route.tramos.length}</div>
   <div class="totem">
     <div class="who">${t.nogeo?"Parada sin ubicación":t.park.name?esc(t.park.name)+" · "+esc(t.park.type||""):"Aparcamiento sugerido: busca sitio lo más cerca posible"}</div>
     <div class="price">G${t.idx+1}<small>${ss.length} paradas</small></div>
@@ -1062,6 +1070,7 @@ function renderDeliv(refit=true){
 }
 function drawDelivMap(t,refit){
   if(active!=="v-deliv")return;const mp=getMap("delivMap");if(!mp)return;mp._g.clearLayers();const pts=[];
+  if(RV&&RV.plan){pts.push(...drawRemaining(mp));meDot(mp._g);if(here)pts.push([here.lat,here.lon]);if(refit)fit(mp,pts);return}
   if(t){const col=COLORS[t.idx%COLORS.length];
     if(t.park){L.marker([t.park.lat,t.park.lon],{icon:parkIcon(!!t.park.spotId,true)}).addTo(mp._g);pts.push([t.park.lat,t.park.lon]);
       const path=[t.park,...t.stopIds.map(byId).filter(hasLL),t.park].map(p=>[p.lat,p.lon]);L.polyline(path,{color:col,weight:4,opacity:.7,dashArray:"6 8"}).addTo(mp._g)}
@@ -1070,6 +1079,126 @@ function drawDelivMap(t,refit){
   }
   meDot(mp._g);if(here)pts.push([here.lat,here.lon]);if(refit)fit(mp,pts);
 }
+
+/* ================= RUTA RESTANTE: recorrido, tiempo estimado y final en base o casa ================= */
+const WALK_KMH=4.5;
+let RV=null; /* {final:"none"|"base"|"home", plan, key, busy} cuando se está mostrando */
+const OSRM="https://router.project-osrm.org/route/v1/driving/";
+const osrmCache=new Map();
+function finalPoint(f){if(f==="base")return parseLL(S.base);if(f==="home")return parseLL(S.home);return null}
+const finalName=f=>f==="base"?"la base":f==="home"?"casa":"";
+function fmtDur(min,speech){min=Math.max(0,Math.round(min));const h=Math.floor(min/60),mm=min%60;
+  if(speech)return h?`${h} hora${h>1?"s":""}${mm?" y "+mm+" minutos":""}`:`${mm} minutos`;
+  return h?`${h} h ${String(mm).padStart(2,"0")} min`:`${mm} min`}
+const hhmm=d=>d.toLocaleTimeString("es-ES",{hour:"2-digit",minute:"2-digit"});
+/* ritmo real de hoy: minutos por parada (caminar + entregar) en los grupos ya terminados */
+function learnedPace(){let min=0,n=0,g=0;
+  for(const t of route.tramos){const tm=route.times[t.idx];if(!tm||!tm.arrive||!tm.end)continue;const k=t.stopIds.map(byId).filter(s=>s&&!s.cancel).length;
+    const d=(tm.end-tm.arrive)/60000;if(k&&d>0&&d<180){min+=d;n+=k;g++}}
+  return g>=2&&n>=4?min/n:null}
+function remainingKey(final){return route.tramos.map(t=>t.stopIds.map(id=>{const s=byId(id);return s&&s.done?"":id}).join(".")+(route.times[t.idx]&&route.times[t.idx].arrive?"a":"")).join("|")+"#"+final}
+/* recorrido por calles con OSRM (gratis, sin clave). Solo se envían coordenadas de aparcamientos. */
+async function osrmRoute(pts){
+  const key=pts.map(p=>(+p.lon).toFixed(4)+","+(+p.lat).toFixed(4)).join(";");
+  const c=osrmCache.get(key);if(c&&Date.now()-c.t<15*60000)return c.r;
+  const legs=[],coords=[];let dist=0,dur=0;
+  for(let i=0;i<pts.length-1;i+=80){ /* el servidor público admite ~100 puntos por consulta */
+    const part=pts.slice(i,i+81);if(part.length<2)break;
+    const url=OSRM+part.map(p=>(+p.lon).toFixed(6)+","+(+p.lat).toFixed(6)).join(";")+"?overview=full&geometries=geojson&steps=false";
+    const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),9000);
+    let j;try{const r=await fetch(url,{signal:ctl.signal});if(!r.ok)throw new Error("HTTP "+r.status);j=await r.json()}finally{clearTimeout(to)}
+    const rt=j&&j.code==="Ok"&&j.routes&&j.routes[0];if(!rt)throw new Error("sin ruta");
+    dist+=rt.distance;dur+=rt.duration;rt.legs.forEach(l=>legs.push({km:l.distance/1000,min:l.duration/60}));
+    coords.push(...rt.geometry.coordinates.map(([lo,la])=>[la,lo]));
+  }
+  const r={km:dist/1000,min:dur/60,legs,coords};osrmCache.set(key,{t:Date.now(),r});return r;
+}
+async function planRemaining(final){
+  const T=route.tramos.filter(t=>t.stopIds.some(id=>{const s=byId(id);return s&&!s.done}));
+  if(!T.length)return null;
+  const pace=learnedPace();
+  const cur=currentTramo(),curArr=cur&&route.times[cur.idx]&&route.times[cur.idx].arrive&&cur.park;
+  const start=curArr?cur.park:here||parseLL(S.base)||parseLL(S.home);
+  const groups=T.map(t=>{const ss=t.stopIds.map(byId).filter(s=>s&&!s.done);
+    let walk=0;if(t.park){const pts=[t.park,...ss.filter(hasLL),t.park];for(let i=1;i<pts.length;i++)walk+=hav(pts[i-1],pts[i]);walk*=S.walkFactor}
+    const arrived=t===cur&&curArr;
+    const work=pace?pace*ss.length:walk/WALK_KMH*60+ss.length*(S.stopMin||4);
+    return{t,ss,pk:ss.reduce((a,s)=>a+s.pkgs,0),walk,work:work+(arrived?0:(S.parkMin??2)),arrived}});
+  /* puntos para conducir: salida → aparcamientos pendientes → final */
+  const fp=finalPoint(final);const pts=[],legOf=[];
+  if(start)pts.push(start);
+  for(const g of groups){if(!g.t.park||g.arrived)continue;pts.push(g.t.park);legOf.push(g)}
+  if(fp)pts.push(fp);
+  let drive={km:0,min:0,coords:pts.map(p=>[p.lat,p.lon]),src:"estimado"};
+  const straight=()=>{let km=0;for(let i=1;i<pts.length;i++)km+=hav(pts[i-1],pts[i])*S.factor;return{km,min:km/(S.speed||30)*60,coords:pts.map(p=>[p.lat,p.lon]),src:"estimado"}};
+  if(pts.length>=2){drive=straight();
+    if(S.osrm!==false&&navigator.onLine!==false){try{const o=await osrmRoute(pts);drive={km:o.km,min:o.min,coords:o.coords,src:"calles"}}catch(e){}}}
+  const work=groups.reduce((a,g)=>a+g.work,0),total=drive.min+work;
+  return{final,fp,start,groups,drive,work,total,pace,eta:new Date(Date.now()+total*60000),
+    stops:groups.reduce((a,g)=>a+g.ss.length,0),pkgs:groups.reduce((a,g)=>a+g.pk,0),walk:groups.reduce((a,g)=>a+g.walk,0),
+    nogeo:groups.filter(g=>!g.t.park).length};
+}
+function planSpeech(p){
+  const fin=p.final!=="none"?(p.fp?`, ya en ${finalName(p.final)}`:""):"";
+  return`Te quedan ${p.stops} parada${p.stops>1?"s":""} en ${p.groups.length} grupo${p.groups.length>1?"s":""}. Unas ${fmtDur(p.total,true)}: ${fmtDur(p.drive.min,true)} conduciendo y ${fmtDur(p.work,true)} de entregas. Terminarías sobre las ${hhmm(p.eta)}${fin}.`+
+    (p.final==="none"&&(parseLL(S.base)||parseLL(S.home))?" Si quieres, di «con vuelta a la base» o «terminando en casa».":"")+
+    (p.nogeo?` Hay ${p.nogeo} parada${p.nogeo>1?"s":""} sin ubicación que no entra en el recorrido.`:"");
+}
+async function showRemaining(final,opts={}){
+  if(!route.tramos.length){if(opts.voice)say(noGroupMsg());else toast("Calcula primero los grupos en la pestaña Ruta");return null}
+  if(!currentTramo()){if(opts.voice)say("Ya has entregado todas las paradas de hoy.");return null}
+  final=final||(RV&&RV.final)||S.routeFinal||"none";
+  if(final!=="none"&&!finalPoint(final)){const n=final==="base"?"la base":"casa";
+    const m=`No tengo guardada la ubicación de ${n}. Guárdala en Ajustes, en «Casa y base del DSP». Te enseño la ruta sin ese final.`;
+    if(opts.voice)say(m);else toast(m);final="none"}
+  if(S.routeFinal!==final){S.routeFinal=final;ls.set(K.set,S)}
+  RV={final,plan:RV&&RV.final===final?RV.plan:null,key:"",busy:true};
+  if(active!=="v-deliv")showView("v-deliv");else renderDeliv(false);
+  const p=await planRemaining(final);if(!RV)return null;
+  RV.plan=p;RV.key=remainingKey(final);RV.busy=false;renderDeliv(true);
+  if(opts.voice&&p)say(planSpeech(p));
+  return p;
+}
+function hideRemaining(){RV=null;if(active==="v-deliv")renderDeliv(true)}
+/* si cambia algo (entrega hecha, grupo terminado) con la ruta a la vista, se recalcula */
+function refreshRemainingIfStale(){if(!RV||RV.busy)return;if(!currentTramo()){RV=null;return}
+  if(RV.key!==remainingKey(RV.final)){RV.busy=true;planRemaining(RV.final).then(p=>{if(!RV)return;RV.plan=p;RV.key=remainingKey(RV.final);RV.busy=false;if(active==="v-deliv")renderDeliv(false)})}}
+function remainingPanel(){
+  const seg=`<div class="seg" role="group" aria-label="Final del recorrido">${[["none","Sin vuelta"],["base","Base"],["home","Casa"]].map(([v,l])=>`<button data-rvfinal="${v}" aria-pressed="${RV.final===v}">${l}</button>`).join("")}</div>`;
+  const p=RV.plan;
+  if(!p)return`<div class="totem"><div class="who">Ruta que te queda</div><div class="price" style="font-size:40px">Calculando…</div><div class="acts">${seg}</div></div>`;
+  const fin=p.final!=="none"&&p.fp?` · en ${finalName(p.final)}`:"";
+  const up=[...p.groups.filter(g=>g.t.park&&!g.arrived).map(g=>g.t.park)];
+  return`<div class="totem">
+    <div class="who">Ruta que te queda · ${p.stops} parada${p.stops>1?"s":""} · ${p.groups.length} grupo${p.groups.length>1?"s":""} · ${p.pkgs} bulto${p.pkgs>1?"s":""}</div>
+    <div class="price" style="font-size:48px;white-space:nowrap">${fmtDur(p.total)}</div>
+    <div class="save">${hhmm(p.eta)}<span>llegada estimada${fin}</span></div>
+    <div class="meta">Conducir ${eur(p.drive.km,1)} km · ${fmtDur(p.drive.min)}${p.drive.src==="calles"?" (por calles, sin tráfico)":" (estimado)"} · Entregas ${fmtDur(p.work)}${p.pace?" (tu ritmo de hoy: "+eur(p.pace,1)+" min/parada)":" ("+(S.stopMin||4)+" min/parada + caminar)"} · A pie ${eur(p.walk,1)} km${p.nogeo?` · ${p.nogeo} sin ubicación`:""}</div>
+    <div class="acts">${seg}${up.length?`<button class="btn" data-rvgmaps="1">Abrir en Google Maps</button>`:""}<button class="btn" data-rvhide="1">Ocultar</button></div>
+  </div>`;
+}
+function drawRemaining(mp){
+  const p=RV&&RV.plan;if(!p)return[];const pts=[];
+  if(p.drive.coords.length>1){L.polyline(p.drive.coords,{color:"#1F5FBF",weight:5,opacity:.8}).addTo(mp._g);p.drive.coords.forEach(c=>pts.push(c))}
+  p.groups.forEach(g=>{const col=COLORS[g.t.idx%COLORS.length];
+    if(g.t.park){L.marker([g.t.park.lat,g.t.park.lon],{icon:L.divIcon({className:"",html:`<div class="ppin ${g.arrived?"cur":""}" style="background:${col};width:40px">G${g.t.idx+1}</div>`,iconSize:[40,30],iconAnchor:[20,15]})})
+      .addTo(mp._g).bindPopup(`G${g.t.idx+1} · ${g.ss.length} parada${g.ss.length>1?"s":""} · ${fmtDur(g.work)}`);pts.push([g.t.park.lat,g.t.park.lon])}
+    g.ss.filter(hasLL).forEach(s=>{L.circleMarker([s.lat,s.lon],{radius:5,color:"#fff",weight:1.5,fillColor:col,fillOpacity:.9}).addTo(mp._g).bindTooltip(s.seq+". "+esc(s.addr))})});
+  if(p.fp){L.marker([p.fp.lat,p.fp.lon],{icon:L.divIcon({className:"",html:`<div class="ppin saved" style="width:58px;font-size:16px">${p.final==="base"?"Base":"Casa"}</div>`,iconSize:[58,30],iconAnchor:[29,15]})}).addTo(mp._g);pts.push([p.fp.lat,p.fp.lon])}
+  return pts;
+}
+function remainingGmaps(){const p=RV&&RV.plan;if(!p)return;const parks=p.groups.filter(g=>g.t.park&&!g.arrived).map(g=>g.t.park);
+  const ll=q=>(+q.lat).toFixed(6)+","+(+q.lon).toFixed(6);
+  let list=p.fp?[...parks.slice(0,8),p.fp]:parks.slice(0,9); /* Google Maps admite hasta 9 paradas intermedias */
+  const dest=list[list.length-1],wp=list.slice(0,-1).map(ll).join("|");
+  window.open("https://www.google.com/maps/dir/?api=1&travelmode=driving&destination="+ll(dest)+(wp?"&waypoints="+encodeURIComponent(wp):""),"_blank");
+  if(parks.length>(p.fp?8:9))toast("Google Maps solo admite unas pocas paradas: se abren las próximas")}
+document.addEventListener("click",e=>{
+  const f=e.target.closest("[data-rvfinal]");if(f){showRemaining(f.dataset.rvfinal);return}
+  if(e.target.closest("[data-rvhide]")){hideRemaining();return}
+  if(e.target.closest("[data-rvgmaps]")){remainingGmaps();return}
+  if(e.target.closest("[data-rvshow]"))showRemaining(null);
+});
 
 /* ================= STATS & HISTORY ================= */
 function dayStats(){
@@ -1220,15 +1349,15 @@ function fillDatalist(){const set=new Set([...Object.values(geo).map(g=>g.addr),
 
 /* ================= SETTINGS ================= */
 function fillSettings(){
-  const f={sWalk:"walk",sMaxStops:"maxStops",sMaxPkg:"maxPkg",sSnap:"snap",sTown:"town",sZones:"zones",sAlert:"alert",sLit:"liters",sCons:"cons",sHour:"hour",sSpeed:"speed",sRadius:"radius",sFactor:"factor",sHome:"home",sBase:"base",sDisc:"disc",sBrands:"brands",sProxy:"proxy",sTheme:"theme"};
+  const f={sWalk:"walk",sMaxStops:"maxStops",sMaxPkg:"maxPkg",sSnap:"snap",sTown:"town",sZones:"zones",sAlert:"alert",sStopMin:"stopMin",sParkMin:"parkMin",sLit:"liters",sCons:"cons",sHour:"hour",sSpeed:"speed",sRadius:"radius",sFactor:"factor",sHome:"home",sBase:"base",sDisc:"disc",sBrands:"brands",sProxy:"proxy",sTheme:"theme"};
   for(const[id,k]of Object.entries(f))$("#"+id).value=S[k];
-  $("#sVibe").checked=!!S.vibe;$("#sGKey").value=S.gKey||"";$("#sGMap").checked=!!S.gMap;$("#sGGeo").checked=!!S.gGeo;$("#sGType").value=S.gType||"roadmap";$("#sGTraffic").checked=!!S.gTraffic;$("#sNav").value=S.navApp||"google";$("#sAiVoice").checked=!!S.aiVoice;$("#sAiLabel").checked=!!S.aiLabel;$("#sCC").checked=S.ccGeo!==false;if(S.gKey)$("#gDetails").open=true;$("#sVReply").checked=!!S.voiceReply;$("#sVAlerts").checked=!!S.voiceAlerts;$("#sVRate").value=S.voiceRate;$$(".prov").forEach(c=>c.checked=S.provs.includes(c.value));$("#rawLink").href=API+"28/"+GASOLEO_A;
+  $("#sVibe").checked=!!S.vibe;$("#sGKey").value=S.gKey||"";$("#sGMap").checked=!!S.gMap;$("#sGGeo").checked=!!S.gGeo;$("#sGType").value=S.gType||"roadmap";$("#sGTraffic").checked=!!S.gTraffic;$("#sNav").value=S.navApp||"google";$("#sAiVoice").checked=!!S.aiVoice;$("#sAiLabel").checked=!!S.aiLabel;$("#sCC").checked=S.ccGeo!==false;$("#sOsrm").checked=S.osrm!==false;if(S.gKey)$("#gDetails").open=true;$("#sVReply").checked=!!S.voiceReply;$("#sVAlerts").checked=!!S.voiceAlerts;$("#sVRate").value=S.voiceRate;$$(".prov").forEach(c=>c.checked=S.provs.includes(c.value));$("#rawLink").href=API+"28/"+GASOLEO_A;
 }
 function readSettings(){
   const g=(id,d)=>{const v=num($(id).value);return isFinite(v)?v:d};const provs=$$(".prov").filter(c=>c.checked).map(c=>c.value);const before=JSON.stringify(S.provs);
   S={...S,walk:g("#sWalk",180),maxStops:g("#sMaxStops",8),maxPkg:g("#sMaxPkg",10),snap:g("#sSnap",150),town:$("#sTown").value.trim(),zones:$("#sZones").value.trim()||DEFAULTS.zones,
     alert:g("#sAlert",80),vibe:$("#sVibe").checked,voiceReply:$("#sVReply").checked,voiceAlerts:$("#sVAlerts").checked,voiceRate:g("#sVRate",1),liters:g("#sLit",50),cons:g("#sCons",8.5),hour:g("#sHour",0),speed:g("#sSpeed",30),radius:g("#sRadius",10),factor:g("#sFactor",1.3),
-    home:$("#sHome").value.trim(),base:$("#sBase").value.trim(),disc:g("#sDisc",0),brands:$("#sBrands").value,proxy:$("#sProxy").value.trim(),theme:$("#sTheme").value,provs:provs.length?provs:["28"],gKey:$("#sGKey").value.trim(),gMap:$("#sGMap").checked,gGeo:$("#sGGeo").checked,gType:$("#sGType").value,gTraffic:$("#sGTraffic").checked,navApp:$("#sNav").value,ccGeo:$("#sCC").checked,aiVoice:$("#sAiVoice").checked,aiLabel:$("#sAiLabel").checked};
+    home:$("#sHome").value.trim(),base:$("#sBase").value.trim(),disc:g("#sDisc",0),brands:$("#sBrands").value,proxy:$("#sProxy").value.trim(),theme:$("#sTheme").value,provs:provs.length?provs:["28"],gKey:$("#sGKey").value.trim(),gMap:$("#sGMap").checked,gGeo:$("#sGGeo").checked,gType:$("#sGType").value,gTraffic:$("#sGTraffic").checked,navApp:$("#sNav").value,ccGeo:$("#sCC").checked,osrm:$("#sOsrm").checked,stopMin:Math.max(0.5,g("#sStopMin",4)),parkMin:Math.max(0,g("#sParkMin",2)),aiVoice:$("#sAiVoice").checked,aiLabel:$("#sAiLabel").checked};
   ls.set(K.set,S);applyTheme();toast("Ajustes guardados");if(JSON.stringify(S.provs)!==before)loadStations(true);
   if(gReady&&S.gKey&&S.gKey!==gLoadedKey)toast("Clave nueva guardada: cierra y vuelve a abrir la app para aplicarla");
   else if(S.gKey&&(S.gMap||S.gGeo)){if(S.gKey!==gLoadedKey)gFail=false;loadGoogle().then(()=>Object.values(maps).forEach(m=>{applyBase(m);setGType(m);syncCtl(m)}))}
@@ -1545,8 +1674,14 @@ function vRemove(seq){const s=route.stops.find(x=>x.seq===+seq);if(!s){say(`No e
   pushUndo(()=>{route.stops.splice(i,0,s);saveRoute()},"quitar la parada "+s.seq);refreshActive();say(`Parada ${s.seq}, ${s.addr}, quitada.${hadT?" Di «calcula los grupos» para reorganizar.":""}`)}
 function vList(){const left=route.stops.filter(s=>!s.done);if(!left.length){say(route.stops.length?"Ya has entregado todas.":"Todavía no hay paradas.");return}
   const f=left.slice(0,5).map(s=>s.seq+", "+s.addr).join(". ");say(`Te quedan ${left.length}. ${left.length>5?"Las próximas: ":""}${f}.`)}
+function finalFrom(t){if(/(sin (vuelta|volver|regres)|quita(r)? la vuelta|no (vuelvo|voy a volver|hace falta volver))/.test(t))return"none";
+  if(/\b(base|estacion|amazon|almacen|nave|delegacion)\b/.test(t))return"base";if(/\bcasa\b/.test(t))return"home";return null}
+function vRoute(t){return showRemaining(finalFrom(t),{voice:true})}
+function vGoFinal(t){const f=finalFrom(t)||"base",p=finalPoint(f);
+  if(!p){say(`No tengo guardada la ubicación de ${f==="base"?"la base":"casa"}. Guárdala en Ajustes, en «Casa y base del DSP».`);return}
+  const ok=openNav(p,f==="base"?"la base":"casa");say(`Vamos a ${f==="base"?"la base":"casa"}.${ok?"":" Pulsa el botón para abrir la navegación."}`)}
 function vHelp(){
-  say("Habla con tus palabras. Por ejemplo: añade parada calle Mayor 12. Calcula los grupos. Dónde aparco. Entregada. Cuántas me quedan. Apunta que el código es 1234. Dónde echo gasoil más barato. Si me equivoco, di deshacer.");
+  say("Habla con tus palabras. Por ejemplo: añade parada calle Mayor 12. Calcula los grupos. Dónde aparco. Entregada. Cuántas me quedan. Qué ruta me queda, con vuelta a la base. Apunta que el código es 1234. Dónde echo gasoil más barato. Si me equivoco, di deshacer.");
   vpanel(null,null,'<button class="btn small" data-tab="v-set">Ver todos los comandos</button>');
 }
 
@@ -1561,6 +1696,12 @@ function route_(t){
   if(/^(repite|repitelo|repitemelo|otra vez|que has dicho|como|perdona|no te he oido|no te oi)$/.test(t))return()=>say(lastReply||"Todavía no he dicho nada.");
   if(/(deshacer|deshaz|anula|borra lo ultimo|me he equivocado|me equivoque|eso no|no era eso)/.test(t))return vUndo;
   if(/(ayuda|que puedo decir|que sabes hacer|comandos|que hago|como funciona|como se usa|no se que decir)/.test(t))return vHelp;
+  /* ruta que queda: recorrido en el mapa, tiempo y final en base o casa */
+  if(/^(?:llevame|navega|guiame|vamos|vuelvo|volvemos|me voy|ir|vete)(?: (?:a|hasta|hacia|para))?(?: (?:la|mi))? (?:casa|base|estacion|amazon|almacen|nave)$/.test(t))return()=>vGoFinal(t);
+  const RQ=/\b(ruta|recorrido|camino|trayecto)\b/.test(t)&&/(queda|falta|restante|pendiente|ensena|muestra|\bver\b|\bveo\b|cual es|dime|como es|cuanto|por hacer|por cumplir|por entregar|en el mapa|que tengo)/.test(t)&&!/(calcul|organiz|ordena|recalcul|prepar|genera|agrupa|monta)/.test(t);
+  const TQ=/(cuanto (?:tiempo )?(?:me )?(?:queda|falta)\b|cuanto (?:tardo|voy a tardar|me va a llevar)|a que hora (?:termino|acabo|salgo|llego)|cuando (?:termino|acabo)|tiempo (?:que me queda|restante|estimado)|hora de llegada|cuanto me falta para (?:terminar|acabar))/.test(t);
+  const FQ=/(vuelta|volver|vuelvo|regres|termin|acab|\bfin\b|final|y luego|despues)/.test(t)&&finalFrom(t)!==null&&!/(llevame|navega|guiame)/.test(t);
+  if(RQ||TQ||FQ)return()=>vRoute(t);
   /* añadir parada */
   mm=t.match(new RegExp("^"+V_ADD+"(?: (?:la|una|otra|nueva|un|el|otro|mas|esta|esa))* "+N_STOP+"(?: (?:mas|nueva|nuevas|otra))?(?: (?:numero|n|no))?(?: (\\d+))?(?: (?:en|a|de|para|con|que es|es|y es|situada en|que esta en))?\\s*(.*)$"));
   if(mm)return()=>vAddStop(mm[1],mm[2]);
@@ -1618,7 +1759,7 @@ function suggestFor(n){
   if(/(aparca|aparque|aparcar)/.test(n))return"Puedes decir «dónde aparco», «he aparcado» o «guarda este aparcamiento».";
   if(/(nota|codigo|portal|timbre|conserje|apunta)/.test(n))return"Para apuntar algo, di «apunta que» y lo que quieras; por ejemplo, «apunta que el código es 1234».";
   if(/(mapa|trafico|atasco|satelite|waze)/.test(n))return"Puedes decir «vista satélite», «mapa normal» o «pon el tráfico».";
-  if(/(grupo|organiz|ruta|ordena)/.test(n))return"Cuando tengas todas las paradas, di «calcula los grupos».";
+  if(/(grupo|organiz|ruta|ordena|recorrido|tiempo|base|casa)/.test(n))return"Para ver lo que te queda en el mapa y cuánto tardas, di «qué ruta me queda» o «cuánto tiempo me queda, con vuelta a la base». Para organizar las paradas, «calcula los grupos».";
   return"Di «ayuda» para oír ejemplos de lo que puedes pedir.";
 }
 /* ================= IA (Claude, a través de la función segura de Supabase) ================= */
@@ -1671,10 +1812,11 @@ async function aiRun(a){
     case"consultar":{const q=g.que,n=int(g.numero);
       return({siguiente:vNext,cuantas_quedan:vRemaining,lista_paradas:vList,que_paquetes_coger:vZone,resumen_dia:vSummary,
         gasto_gasoil_mes:vSpent,consumo:vCons,gasolinera_barata:()=>vFuel(false),notas_parada:()=>vReadNotes(n)}[q]||(()=>say("No sé responder a eso todavía.")))()}
-    case"navegar":{if(g.destino==="gasolinera")return vFuel(true);return g.app==="waze"?vWaze("llevame waze"):vGoPark()}
+    case"navegar":{if(g.destino==="gasolinera")return vFuel(true);if(g.destino==="base"||g.destino==="casa")return vGoFinal(g.destino);return g.app==="waze"?vWaze("llevame waze"):vGoPark()}
     case"mapa":{const v=g.vista;if(v==="satelite")return vMapType("satellite");if(v==="hibrido")return vMapType("hybrid");if(v==="mapa")return vMapType("roadmap");
       if(v==="trafico_on")return vTraffic(true);if(v==="trafico_off")return vTraffic(false);if(v==="portal")return vStreet(int(g.numero));return}
     case"abrir_pestana":{const id=TABS[g.pestana];if(id){showView(id);say("Abro "+g.pestana+".")}return}
+    case"ruta_restante":{const f={base:"base",casa:"home",ninguno:"none"}[g.final];return showRemaining(f||null,{voice:true})}
     case"deshacer":return vUndo();
   }
 }

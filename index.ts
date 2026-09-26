@@ -31,6 +31,7 @@ Reglas:
 - Números de parada: solo si los dice. Si no, déjalos vacíos.
 - Direcciones: escríbelas limpias y con mayúscula inicial (por ejemplo "Calle Mayor 12"), sin palabras de relleno.
 - Si pregunta algo sobre su día (qué le queda, dónde aparcar, gasto…), usa la herramienta "consultar": la app responde con sus datos reales.
+- Si pregunta por la ruta o el recorrido que le queda, cuánto tiempo le falta o a qué hora terminará, usa "ruta_restante" (con final "base" o "casa" si lo menciona).
 - Si la frase no tiene que ver con el reparto o no es clara, no llames a ninguna herramienta y responde con UNA pregunta corta en español para aclararlo.
 - Si solo saluda o da las gracias, responde con una frase breve y amable.
 - Respuestas de texto: máximo 20 palabras, en español de España, sin emojis. Va conduciendo.
@@ -67,8 +68,11 @@ const HERRAMIENTAS = [
       numero: { type: "integer" } }, required: ["que"] } },
   { name: "navegar", description: "Abre la navegación.",
     input_schema: { type: "object", properties: {
-      destino: { type: "string", enum: ["aparcamiento", "gasolinera"] },
+      destino: { type: "string", enum: ["aparcamiento", "gasolinera", "base", "casa"] },
       app: { type: "string", enum: ["google", "waze"] } }, required: ["destino"] } },
+  { name: "ruta_restante", description: "Muestra en el mapa el recorrido que le queda por entregar y cuánto tiempo tardará. Opcionalmente, terminando en la base (Amazon) o en casa.",
+    input_schema: { type: "object", properties: {
+      final: { type: "string", enum: ["base", "casa", "ninguno"], description: "Dónde quiere terminar, solo si lo dice" } } } },
   { name: "mapa", description: "Cambia el mapa o muestra el tráfico o el portal.",
     input_schema: { type: "object", properties: { vista: { type: "string", enum: [
       "mapa", "satelite", "hibrido", "trafico_on", "trafico_off", "portal"] }, numero: { type: "integer" } }, required: ["vista"] } },
