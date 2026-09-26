@@ -225,6 +225,10 @@ body:has(.sv-view[style*="flex"]) .vpanel{z-index:3250;bottom:calc(16px + env(sa
               <div class="field"><label for="ocrOut">Texto leído de la etiqueta (selecciona la dirección)</label><textarea id="ocrOut"></textarea></div>
               <button class="btn small" id="ocrUse">Usar el texto seleccionado como dirección</button>
             </div>
+            <h3>Importar desde capturas de la app de Amazon</h3>
+            <p class="help">Haz capturas de pantalla de la lista de paradas (puedes elegir varias a la vez, en orden). La app lee número, dirección y bultos y los deja abajo para que los revises.</p>
+            <div class="inline"><label class="btn" for="itinIn" style="display:inline-grid;place-items:center">Elegir capturas del itinerario</label><span class="status" id="itinState" role="status"></span></div>
+            <input id="itinIn" type="file" accept="image/*" multiple hidden>
             <h3>Pegar varias a la vez</h3>
             <p class="help">Una parada por línea. Ejemplos: <code>23. Calle Mayor 12 x2</code> o <code>24; Av. de Guadalajara 5; 1; V</code> (V = voluminoso).</p>
             <div class="field"><textarea id="bulkIn" placeholder="1. Calle Libreros 10&#10;2. Calle Libreros 22 x3&#10;3; Plaza de Cervantes 4; 1; V"></textarea></div>
@@ -923,6 +927,67 @@ $("#ocrUse").addEventListener("click",()=>{const t=$("#ocrOut");let s=t.value.sl
   if(!s)s=(t.value.split("\n").find(l=>/\d/.test(l)&&/[a-z]{3}/i.test(l))||"").trim();
   $("#qAddr").value=s.replace(/\s+/g," ");$("#ocrBox").style.display="none";$("#qAddr").focus()});
 
+/* ================= IMPORTAR ITINERARIO DESDE CAPTURAS =================
+   Sin IA: lector de texto en el propio dispositivo + reglas. Con IA (si «Leer las etiquetas con la IA» está activado): más preciso.
+   Nunca se guardan nombres ni teléfonos: solo número de parada, dirección y bultos. Siempre se revisa antes de añadir. */
+const IT_STREET=/(?:^|[^a-záéíóúüñ])(?:calle|c\/|cl\.?|avda\.?|avenida|av\.|plaza|pza\.?|pl\.|paseo|p[ºo]\.|camino|carretera|ctra\.?|ronda|traves[ií]a|glorieta|urbanizaci[oó]n|urb\.|pasaje|callej[oó]n|v[ií]a|pol[ií]gono|barrio|cuesta|bulevar|rambla|costanilla|sector|parque|plazuela|carrera)(?![a-záéíóúüñ])/i;
+function parseItinerary(text){
+  const out=[];let pend=null,cur=null;
+  const L=String(text).split(/\r?\n/).map(x=>x.replace(/[|›»>•·]+/g," ").replace(/\s+/g," ").trim()).filter(Boolean);
+  for(let raw of L){
+    let m;
+    if((m=raw.match(/^(?:parada|stop|n[ºo°]?)?\s*#?(\d{1,3})\s*$/i))){pend=+m[1];continue}
+    if((m=raw.match(/^(?:parada|stop)\s*#?(\d{1,3})\b[\s.:\-)]*(.*)$/i))){pend=+m[1];raw=m[2];if(!raw)continue}
+    const pk=raw.match(/\b(\d{1,2})\s*(?:paquetes?|bultos?|packages?|pkgs?|pqts?|art[ií]culos?)\b/i);
+    if(pk&&cur&&!IT_STREET.test(raw)){if(!cur.pkSet){cur.pkgs=+pk[1];cur.pkSet=true}continue}
+    if(IT_STREET.test(raw)){
+      let seq=pend;pend=null;const lead=raw.match(/^(\d{1,3})\s*[.\-):]?\s+(?=\D)/);if(lead&&seq==null){seq=+lead[1];raw=raw.slice(lead[0].length)}
+      raw=raw.replace(/\b\d{1,2}\s*(?:paquetes?|bultos?|packages?|pkgs?)\b/ig,"").replace(/\s+[-–]\s*$/,"").trim();
+      raw=raw.replace(/^cl\.?\s/i,"C/ ").replace(/(\d)\s*["”°]\s*([A-Za-z])\b/g,"$1º $2");
+      cur={seq,addr:raw,pkgs:pk?+pk[1]:1,pkSet:!!pk};out.push(cur);continue}
+    if(cur&&(m=raw.match(/\b(\d{5})\b\s*(.*)$/))&&!/\d{5}/.test(cur.addr)){cur.addr+=", "+m[1]+(m[2]?" "+m[2].replace(/[^A-Za-zÁÉÍÓÚÜÑáéíóúüñ .'-]/g,"").trim():"");continue}
+  }
+  return out.map(x=>({seq:x.seq,pkgs:x.pkgs,addr:x.addr.replace(/\s+,/g,",").replace(/,\s*$/,"").trim()})).filter(x=>x.addr.length>5);
+}
+let itinNoSeq=false;
+function itinLines(list){
+  /* quita repetidas (las capturas se solapan al desplazar) y las que ya están en la ruta */
+  const inRoute=new Set(route.stops.map(s=>normKey(s.addr))),seen=new Set(),out=[];
+  for(const x of list){const ka=normKey(x.addr),k=x.seq!=null?"s:"+x.seq:"a:"+ka;if(inRoute.has(ka)||seen.has(k)||seen.has("a:"+ka))continue;seen.add(k);seen.add("a:"+ka);out.push(x)}
+  for(let i=1;i<out.length;i++)if(out[i].seq==null&&out[i-1].seq!=null)out[i].seq=out[i-1].seq+1;
+  for(let i=out.length-2;i>=0;i--)if(out[i].seq==null&&out[i+1].seq!=null&&out[i+1].seq>1)out[i].seq=out[i+1].seq-1;
+  itinNoSeq=out.length&&out.every(x=>x.seq==null);
+  if(out.every(x=>x.seq!=null))out.sort((a,b)=>a.seq-b.seq);
+  return out.map(x=>`${x.seq!=null?x.seq+". ":""}${x.addr}${x.pkgs>1?" x"+x.pkgs:""}`);
+}
+async function itinAI(file){
+  const d=await compress(file,1800);if(!d)return{error:"ia"};
+  const r=await aiCall({modo:"itinerario",tipo:"image/jpeg",imagen:d.split(",")[1]},30000);if(r.error)return r;
+  const e=(r.acciones||[]).find(a=>a.nombre==="itinerario"),P=(e&&e.args&&Array.isArray(e.args.paradas))?e.args.paradas:[];
+  return{list:P.map(p=>{const a=str(p.direccion,160),cp=str(p.codigo_postal,5),lo=str(p.localidad,60);
+    return{seq:int(p.numero),addr:a+(cp&&!a.includes(cp)?", "+cp:"")+(lo&&!normKey(a).includes(normKey(lo))?" "+lo:""),pkgs:int(p.bultos)||1}}).filter(x=>x.addr.length>5)};
+}
+async function itinOCR(file){
+  if(!window.Tesseract)await loadScript("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js");
+  const small=await compress(file,2000);const r=await Tesseract.recognize(small||file,"spa");return{list:parseItinerary(r.data.text),text:r.data.text};
+}
+$("#itinIn").addEventListener("change",async e=>{
+  const files=[...e.target.files];e.target.value="";if(!files.length)return;
+  const st=$("#itinState"),all=[];let usedAI=false,aiErr=null;
+  for(let i=0;i<files.length;i++){
+    st.textContent=`Leyendo captura ${i+1} de ${files.length}…`;
+    let r=null;
+    if(S.aiLabel&&!aiErr){r=await itinAI(files[i]);if(r.error){aiErr=r.error;r=null}else usedAI=true}
+    if(!r){try{if(i===0&&!window.Tesseract)st.textContent="Preparando el lector (solo la primera vez)…";r=await itinOCR(files[i])}catch(_){r={list:[]}}}
+    all.push(...r.list);
+  }
+  const lines=itinLines(all);
+  if(!lines.length){st.textContent="";toast("No he encontrado paradas en las capturas. Prueba con capturas más nítidas o pega la lista a mano.");return}
+  const box=$("#bulkIn");box.value=(box.value.trim()?box.value.trim()+"\n":"")+lines.join("\n");
+  st.textContent=`${lines.length} paradas leídas${usedAI?" con IA":""}${aiErr?" (la IA no respondió; usé el lector sencillo)":""}.${itinNoSeq?` No he podido leer los números de parada: se numerarán seguidas desde la ${nextSeq()}. Si no empiezan ahí, pon el número delante de la primera (por ejemplo «21.»).`:""} Revísalas abajo y pulsa «Añadir estas paradas».`;
+  box.scrollIntoView({block:"center"});box.focus();
+});
+
 /* ================= ROUTE: geocoding ================= */
 const GCACHE=30*864e5; /* las condiciones de Google permiten guardar coordenadas hasta 30 días */
 let geocoding=false,geoAgain=false,nomiBlocked=false;
@@ -998,7 +1063,10 @@ function computeTramos(){
   }
   close();
   const Z=zones(),n=Z.length||1;
-  T.forEach((t,i)=>{t.idx=i;if(!t.nogeo)t.park=parkingFor(t.stopIds.map(byId));t.zone=Z[Math.min(n-1,Math.floor(i*n/T.length))]||"—";});
+  /* zonas de carga según el volumen: cada zona recibe aproximadamente el mismo número de bultos
+     (un voluminoso cuenta como 3), empezando por la puerta con lo primero que se entrega */
+  const vol=t=>t.stopIds.map(byId).reduce((a,s)=>a+(s.pkgs||1)*(s.bulky?3:1),0),tot=T.reduce((a,t)=>a+vol(t),0)||1;let acc=0;
+  T.forEach((t,i)=>{t.idx=i;if(!t.nogeo)t.park=parkingFor(t.stopIds.map(byId));const v=vol(t);t.zone=Z[Math.min(n-1,Math.floor((acc+v/2)/tot*n))]||"—";acc+=v;});
   route.tramos=T;route.times={};saveRoute();
 }
 function walkKm(t){if(!t.park)return 0;const pts=[t.park,...t.stopIds.map(byId),t.park];let d=0;for(let i=1;i<pts.length;i++)d+=hav(pts[i-1],pts[i]);return d*S.walkFactor}

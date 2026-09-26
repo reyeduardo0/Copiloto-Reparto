@@ -109,11 +109,24 @@ const HERRAMIENTA_ETIQUETA = {
     confianza: { type: "string", enum: ["alta", "media", "baja"] } }, required: ["direccion", "confianza"] },
 };
 
+const SISTEMA_ITINERARIO = `Lees capturas de pantalla del itinerario de reparto (lista de paradas) de la app de Amazon, hechas por un repartidor en España.
+Extrae TODAS las paradas visibles, en el orden en que aparecen: número de parada, dirección de entrega y número de paquetes.
+Nunca devuelvas nombres de personas ni teléfonos. No inventes: si un dato no se ve, déjalo vacío.
+Si una parada está cortada por el borde de la captura y no se lee la dirección completa, no la incluyas.`;
+const HERRAMIENTA_ITINERARIO = {
+  name: "itinerario", description: "Paradas leídas de la captura",
+  input_schema: { type: "object", properties: { paradas: { type: "array", items: { type: "object", properties: {
+    numero: { type: "integer", description: "Número de parada de la ruta" },
+    direccion: { type: "string", description: "Calle y número, con piso/puerta si aparece" },
+    codigo_postal: { type: "string" }, localidad: { type: "string" },
+    bultos: { type: "integer", description: "Paquetes de esa parada, si aparece" } }, required: ["direccion"] } } }, required: ["paradas"] },
+};
+
 async function claude(key: string, payload: Record<string, unknown>) {
   const r = await fetch((Deno.env.get("ANTHROPIC_BASE_URL") ?? "https://api.anthropic.com") + "/v1/messages", {
     method: "POST",
     headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-    body: JSON.stringify({ model: MODELO, max_tokens: 700, ...payload }),
+    body: JSON.stringify({ model: MODELO, max_tokens: 700, ...payload }), // cada modo puede subir max_tokens
   });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) {
@@ -150,7 +163,7 @@ Deno.serve(async (req) => {
     const { data } = await sb.from("copiloto_ia_uso").select("llamadas").eq("dia", hoy()).maybeSingle();
     return json({ ok: true, clave: !!key, usadas: data?.llamadas ?? 0, limite: LIMITE, modelo: MODELO });
   }
-  if (modo !== "voz" && modo !== "etiqueta") return json({ error: "modo" }, 400);
+  if (modo !== "voz" && modo !== "etiqueta" && modo !== "itinerario") return json({ error: "modo" }, 400);
   if (!key) return json({ error: "sin_clave" }, 503);
 
   // validar entrada antes de gastar una consulta
@@ -162,6 +175,16 @@ Deno.serve(async (req) => {
     payload = {
       system: SISTEMA_VOZ, tools: HERRAMIENTAS, tool_choice: { type: "auto" },
       messages: [{ role: "user", content: `Estado del día: ${ctx}\n\nFrase del repartidor: «${texto}»` }],
+    };
+  } else if (modo === "itinerario") {
+    const img = String(body.imagen ?? "");
+    const tipo = String(body.tipo ?? "image/jpeg");
+    if (!/^image\/(jpeg|png|webp)$/.test(tipo) || img.length < 100 || img.length > 4_000_000) return json({ error: "imagen" }, 400);
+    payload = {
+      system: SISTEMA_ITINERARIO, tools: [HERRAMIENTA_ITINERARIO], tool_choice: { type: "tool", name: "itinerario" }, max_tokens: 3000,
+      messages: [{ role: "user", content: [
+        { type: "image", source: { type: "base64", media_type: tipo, data: img } },
+        { type: "text", text: "Extrae las paradas de esta captura del itinerario." }] }],
     };
   } else {
     const img = String(body.imagen ?? "");
