@@ -401,7 +401,7 @@ body:has(.sv-view[style*="flex"]) .vpanel{z-index:3250;bottom:calc(16px + env(sa
               <ol class="help" style="padding-left:20px">
                 <li>Entra en <b>platform.claude.com</b>, crea una cuenta, añade saldo (con 5 $ tienes para mucho tiempo) y en «API Keys» crea una clave.</li>
                 <li>En Supabase, abre tu proyecto → <b>Edge Functions → Secrets</b> y añade un secreto llamado <b>ANTHROPIC_API_KEY</b> con esa clave. La clave queda solo en el servidor: nunca la pongas en la app.</li>
-                <li>Añade también el secreto <b>IA_CORREOS_PERMITIDOS</b> con tu correo (varios, separados por comas). Solo esas cuentas podrán usar la IA y gastar tu saldo.</li>
+                <li>Solo la cuenta reyeduardo0@gmail.com puede usar la IA. Para permitir otras, añade el secreto <b>IA_CORREOS_PERMITIDOS</b> con los correos separados por comas (incluye también el tuyo).</li>
                 <li>En <b>Authentication → Sign In / Providers</b>, cuando ya tengas tu cuenta creada, desactiva «Allow new users to sign up» para que nadie más pueda registrarse.</li>
                 <li>Opcional: añade <b>IA_LIMITE_DIARIO</b> con el máximo de consultas al día (por defecto, 300).</li>
                 <li>Vuelve aquí y pulsa «Probar la IA».</li>
