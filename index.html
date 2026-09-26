@@ -235,8 +235,10 @@ body:has(.sv-view[style*="flex"]) .vpanel{z-index:3250;bottom:calc(16px + env(sa
             <div class="inline" style="margin:10px 0">
               <button class="btn primary" id="calcTramos">Calcular grupos y carga</button>
               <button class="btn small bad" id="newDay">Nueva jornada</button>
+              <button class="btn small" id="offSave">Guardar mapa para sin cobertura</button>
             </div>
             <div id="routeSummary" class="status"></div>
+            <div id="offState" class="status" role="status"></div>
             <div class="list" id="stopList"></div>
           </div>
         </div>
@@ -476,6 +478,11 @@ revoke all on public.copiloto_datos from anon;</pre>
             <p class="help">Si CartoCiudad no encuentra una dirección, se prueba con OpenStreetMap.</p>
             <label class="check"><input id="sOsrm" type="checkbox"> Dibujar la ruta que me queda por las calles (OSRM)</label>
             <p class="help">Servicio gratuito de rutas: solo recibe las coordenadas de los aparcamientos. Sin él, se usa una estimación en línea recta.</p>
+            <h3>Sin cobertura</h3>
+            <label class="check"><input id="sOffMap" type="checkbox"> Guardar el mapa de la ruta al calcular los grupos</label>
+            <p class="help">Descarga la zona de tu ruta (la primera vez, unos 10-30 MB; los días siguientes casi nada, porque se reutiliza). Los trozos de mapa que ves también se guardan solos. El lector de etiquetas sin IA funciona sin cobertura después de usarlo una vez con conexión.</p>
+            <p class="help" id="offInfo" role="status"></p>
+            <div class="inline"><button class="btn small" id="offSave2">Guardar ahora el mapa de la ruta</button><button class="btn small bad" id="offClear">Borrar mapas guardados</button></div>
           </div>
           <div class="panel" id="gPanel">
             <details id="gDetails"><summary style="cursor:pointer;font-weight:700;font-size:21px;min-height:48px;display:flex;align-items:center">Google Maps con clave (opcional, avanzado)</summary>
@@ -600,7 +607,7 @@ const API="https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/Prec
 const GASOLEO_A=4;
 const K={set:"dc:settings",logs:"dc:logs",st:"dc:stations",route:"dc:route",geo:"dc:geocache",notes:"dc:notes",spots:"dc:spots",hist:"dc:history"};
 const DEFAULTS={liters:50,cons:8.5,hour:0,speed:30,radius:10,factor:1.3,provs:["28"],home:"",base:"",disc:0,brands:"",proxy:"",theme:"auto",
-  walk:180,maxStops:8,stopMin:4,parkMin:2,osrm:true,routeFinal:"none",maxPkg:10,snap:150,town:"",alert:80,vibe:true,walkFactor:1.25,voiceReply:true,voiceAlerts:true,voiceRate:1,gKey:"",gMap:true,gGeo:true,gType:"roadmap",gTraffic:false,ccGeo:true,navApp:"google",aiVoice:false,aiLabel:false,
+  walk:180,maxStops:8,offMap:true,stopMin:4,parkMin:2,osrm:true,routeFinal:"none",maxPkg:10,snap:150,town:"",alert:80,vibe:true,walkFactor:1.25,voiceReply:true,voiceAlerts:true,voiceRate:1,gKey:"",gMap:true,gGeo:true,gType:"roadmap",gTraffic:false,ccGeo:true,navApp:"google",aiVoice:false,aiLabel:false,
   zones:"Junto a la puerta trasera\nJunto a la puerta lateral\nCentro izquierda\nCentro derecha\nFondo izquierda\nFondo derecha"};
 const COLORS=["#1F5FBF","#D9480F","#2B8A3E","#862E9C","#C2255C","#0B7285","#5C940D","#E67700"];
 const ls={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},
@@ -973,7 +980,7 @@ $("#calcTramos").addEventListener("click",()=>{
   if(!route.stops.length){toast("Añade primero las paradas");return}
   if(Object.keys(route.times).length&&!confirm("Ya has empezado el reparto. Recalcular borrará los tiempos registrados. ¿Continuar?"))return;
   const pend=route.stops.filter(s=>s.geo==="pending").length;if(pend)toast("Aún se están localizando "+pend+" paradas; se calculará con las que ya tienen ubicación");
-  computeTramos();renderRoute();toast(route.tramos.length+" grupos calculados");
+  computeTramos();renderRoute();toast(route.tramos.length+" grupos calculados");autoOffline();
 });
 $("#newDay").addEventListener("click",()=>{
   if(!confirm("¿Empezar una jornada nueva? Si no has cerrado la actual, se guardará en el historial."))return;
@@ -1387,13 +1394,13 @@ function fillDatalist(){const set=new Set([...Object.values(geo).map(g=>g.addr),
 function fillSettings(){
   const f={sWalk:"walk",sMaxStops:"maxStops",sMaxPkg:"maxPkg",sSnap:"snap",sTown:"town",sZones:"zones",sAlert:"alert",sStopMin:"stopMin",sParkMin:"parkMin",sLit:"liters",sCons:"cons",sHour:"hour",sSpeed:"speed",sRadius:"radius",sFactor:"factor",sHome:"home",sBase:"base",sDisc:"disc",sBrands:"brands",sProxy:"proxy",sTheme:"theme"};
   for(const[id,k]of Object.entries(f))$("#"+id).value=S[k];
-  $("#sVibe").checked=!!S.vibe;$("#sGKey").value=S.gKey||"";$("#sGMap").checked=!!S.gMap;$("#sGGeo").checked=!!S.gGeo;$("#sGType").value=S.gType||"roadmap";$("#sGTraffic").checked=!!S.gTraffic;$("#sNav").value=S.navApp||"google";$("#sAiVoice").checked=!!S.aiVoice;$("#sAiLabel").checked=!!S.aiLabel;$("#sCC").checked=S.ccGeo!==false;$("#sOsrm").checked=S.osrm!==false;if(S.gKey)$("#gDetails").open=true;$("#sVReply").checked=!!S.voiceReply;$("#sVAlerts").checked=!!S.voiceAlerts;$("#sVRate").value=S.voiceRate;$$(".prov").forEach(c=>c.checked=S.provs.includes(c.value));$("#rawLink").href=API+"28/"+GASOLEO_A;
+  $("#sVibe").checked=!!S.vibe;$("#sGKey").value=S.gKey||"";$("#sGMap").checked=!!S.gMap;$("#sGGeo").checked=!!S.gGeo;$("#sGType").value=S.gType||"roadmap";$("#sGTraffic").checked=!!S.gTraffic;$("#sNav").value=S.navApp||"google";$("#sAiVoice").checked=!!S.aiVoice;$("#sAiLabel").checked=!!S.aiLabel;$("#sCC").checked=S.ccGeo!==false;$("#sOsrm").checked=S.osrm!==false;$("#sOffMap").checked=S.offMap!==false;if(S.gKey)$("#gDetails").open=true;$("#sVReply").checked=!!S.voiceReply;$("#sVAlerts").checked=!!S.voiceAlerts;$("#sVRate").value=S.voiceRate;$$(".prov").forEach(c=>c.checked=S.provs.includes(c.value));$("#rawLink").href=API+"28/"+GASOLEO_A;
 }
 function readSettings(silent){
   const g=(id,d)=>{const v=num($(id).value);return isFinite(v)?v:d};const provs=$$(".prov").filter(c=>c.checked).map(c=>c.value);const before=JSON.stringify(S.provs);
   S={...S,walk:g("#sWalk",180),maxStops:g("#sMaxStops",8),maxPkg:g("#sMaxPkg",10),snap:g("#sSnap",150),town:$("#sTown").value.trim(),zones:$("#sZones").value.trim()||DEFAULTS.zones,
     alert:g("#sAlert",80),vibe:$("#sVibe").checked,voiceReply:$("#sVReply").checked,voiceAlerts:$("#sVAlerts").checked,voiceRate:g("#sVRate",1),liters:g("#sLit",50),cons:g("#sCons",8.5),hour:g("#sHour",0),speed:g("#sSpeed",30),radius:g("#sRadius",10),factor:g("#sFactor",1.3),
-    home:$("#sHome").value.trim(),base:$("#sBase").value.trim(),disc:g("#sDisc",0),brands:$("#sBrands").value,proxy:$("#sProxy").value.trim(),theme:$("#sTheme").value,provs:provs.length?provs:["28"],gKey:$("#sGKey").value.trim(),gMap:$("#sGMap").checked,gGeo:$("#sGGeo").checked,gType:$("#sGType").value,gTraffic:$("#sGTraffic").checked,navApp:$("#sNav").value,ccGeo:$("#sCC").checked,osrm:$("#sOsrm").checked,stopMin:Math.max(0.5,g("#sStopMin",4)),parkMin:Math.max(0,g("#sParkMin",2)),aiVoice:$("#sAiVoice").checked,aiLabel:$("#sAiLabel").checked};
+    home:$("#sHome").value.trim(),base:$("#sBase").value.trim(),disc:g("#sDisc",0),brands:$("#sBrands").value,proxy:$("#sProxy").value.trim(),theme:$("#sTheme").value,provs:provs.length?provs:["28"],gKey:$("#sGKey").value.trim(),gMap:$("#sGMap").checked,gGeo:$("#sGGeo").checked,gType:$("#sGType").value,gTraffic:$("#sGTraffic").checked,navApp:$("#sNav").value,ccGeo:$("#sCC").checked,osrm:$("#sOsrm").checked,offMap:$("#sOffMap").checked,stopMin:Math.max(0.5,g("#sStopMin",4)),parkMin:Math.max(0,g("#sParkMin",2)),aiVoice:$("#sAiVoice").checked,aiLabel:$("#sAiLabel").checked};
   ls.set(K.set,S);applyTheme();if(!silent)toast("Ajustes guardados");if(JSON.stringify(S.provs)!==before)loadStations(true);
   if(gReady&&S.gKey&&S.gKey!==gLoadedKey)toast("Clave nueva guardada: cierra y vuelve a abrir la app para aplicarla");
   else if(S.gKey&&(S.gMap||S.gGeo)){if(S.gKey!==gLoadedKey)gFail=false;loadGoogle().then(()=>Object.values(maps).forEach(m=>{applyBase(m);setGType(m);syncCtl(m)}))}
@@ -1479,7 +1486,7 @@ function showView(id){
   active=id;$$("nav.tabs button").forEach(x=>x.setAttribute("aria-selected",x.dataset.view===id));$$(".view").forEach(v=>v.classList.toggle("active",v.id===id));
   if(id!=="v-route"){pickFor=null;document.body.classList.remove("picking")}
   if(id==="v-route")renderRoute();else if(id==="v-load")renderLoad();else if(id==="v-deliv")renderDeliv(true);
-  else if(id==="v-fuel")loadStations(false);else if(id==="v-stats")renderStats();else if(id==="v-places")renderPlaces();
+  else if(id==="v-fuel")loadStations(false);else if(id==="v-stats")renderStats();else if(id==="v-places")renderPlaces();else if(id==="v-set")offlineInfo();
   setTimeout(()=>Object.values(maps).forEach(mp=>mp.invalidateSize()),80);
 }
 $$("nav.tabs button").forEach(b=>b.addEventListener("click",()=>showView(b.dataset.view)));
@@ -1674,7 +1681,7 @@ function vSpot(nameCap){const name=nameCap?capFirst(tail(nameCap)):"";if(!saveSp
   const sp=spots[spots.length-1];pushUndo(()=>{spots=spots.filter(x=>x.id!==sp.id);ls.set(K.spots,spots)},"el aparcamiento");refreshActive();
   say(`Aparcamiento guardado${name?" como "+name:""}. Lo usaré al calcular los grupos.`)}
 function vCalc(){if(!route.stops.length){say("Todavía no hay paradas.");return}if(Object.keys(route.times).length){say("Ya has empezado el reparto. Si quieres recalcular, hazlo desde la pestaña Ruta.");return}
-  computeTramos();refreshActive();const r=routeMetrics();say(`${route.tramos.length} grupos calculados. Conducirás unos ${eur(r.drive,1)} kilómetros en lugar de ${eur(r.base,1)}, y caminarás unos ${eur(r.walk,1)}.`)}
+  computeTramos();refreshActive();autoOffline();const r=routeMetrics();say(`${route.tramos.length} grupos calculados. Conducirás unos ${eur(r.drive,1)} kilómetros en lugar de ${eur(r.base,1)}, y caminarás unos ${eur(r.walk,1)}.`)}
 async function vFuel(go){
   if(!here){say("Todavía no tengo señal GPS.");return}
   if(!cache){say("Consultando precios…",{show:true});await loadStations(true)}
@@ -2178,6 +2185,80 @@ if(cloud.url&&cloud.key&&(localStorage.getItem("dc:sb-auth")||syncMeta.__user))s
 })();
 /* ================= app instalable ================= */
 if("serviceWorker" in navigator&&location.protocol.startsWith("http"))navigator.serviceWorker.register("sw.js").catch(()=>{});
+/* ================= MAPA SIN COBERTURA =================
+   Se descargan los trozos del mapa que cubren la ruta: toda la zona con poco detalle y, con mucho detalle,
+   los alrededores de paradas, aparcamientos, base y casa. El service worker los guarda (sw.js). */
+const lon2x=(lon,z)=>Math.floor((lon+180)/360*2**z);
+const lat2y=(lat,z)=>{const r=lat*Math.PI/180;return Math.floor((1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*2**z)};
+function offPoints(){const P=[];route.stops.filter(hasLL).forEach(s=>P.push(s));route.tramos.forEach(t=>{if(t.park)P.push(t.park)});
+  [parseLL(S.base),parseLL(S.home),here].forEach(p=>{if(p)P.push(p)});return P}
+function offTiles(maxN=2500){
+  const P=offPoints();if(!P.length)return[];const set=new Set();
+  const la=P.map(p=>+p.lat),lo=P.map(p=>+p.lon),pad=0.01;
+  const box=(z,s,n,w,e)=>{for(let x=lon2x(w,z);x<=lon2x(e,z);x++)for(let y=lat2y(n,z);y<=lat2y(s,z);y++)set.add(z+"/"+x+"/"+y)};
+  for(let z=12;z<=15;z++)box(z,Math.min(...la)-pad,Math.max(...la)+pad,Math.min(...lo)-pad,Math.max(...lo)+pad);
+  /* trayectos entre aparcamientos: puntos cada ~150 m */
+  const T=route.tramos.filter(t=>t.park).map(t=>t.park),line=[];
+  for(let i=1;i<T.length;i++){const a=T[i-1],b=T[i],k=Math.max(1,Math.ceil(hav(a,b)/0.15));for(let j=0;j<=k;j++)line.push({lat:+a.lat+(b.lat-a.lat)*j/k,lon:+a.lon+(b.lon-a.lon)*j/k})}
+  const near=(z,pts,r)=>{for(const p of pts){const dl=r/111320,dn=r/(111320*Math.cos(p.lat*Math.PI/180));box(z,+p.lat-dl,+p.lat+dl,+p.lon-dn,+p.lon+dn)}};
+  near(16,[...P,...line],450);const before17=set.size;near(17,P,250);
+  let out=[...set];if(out.length>maxN)out=out.filter(k=>!k.startsWith("17/")).concat([...set].filter(k=>k.startsWith("17/")).slice(0,Math.max(0,maxN-before17)));
+  return out.slice(0,maxN);
+}
+function offUrls(keys){
+  const road=roadFallback?(z,x,y)=>`https://${"abcd"[Math.abs(x+y)%4]}.basemaps.cartocdn.com/rastertiles/voyager/${z}/${x}/${y}.png`
+    :(z,x,y)=>IGN_BASE.replace("{z}",z).replace("{x}",x).replace("{y}",y);
+  const orto=(z,x,y)=>IGN_ORTO.replace("{z}",z).replace("{x}",x).replace("{y}",y),lab=(z,x,y)=>IGN_LABELS.replace("{z}",z).replace("{x}",x).replace("{y}",y);
+  const U=[];for(const k of keys){const[z,x,y]=k.split("/").map(Number);U.push(road(z,x,y));
+    if(S.gType==="satellite"||S.gType==="hybrid"){U.push(orto(z,x,y));if(S.gType==="hybrid")U.push(lab(z,x,y))}}
+  return U;
+}
+let offBusy=false;
+function swAsk(msg){return new Promise(res=>{const c=navigator.serviceWorker&&navigator.serviceWorker.controller;if(!c){res(null);return}
+  const h=e=>{if(e.data&&e.data.tipo===msg.tipo.split("-")[0]+"-info"){navigator.serviceWorker.removeEventListener("message",h);res(e.data)}};
+  navigator.serviceWorker.addEventListener("message",h);c.postMessage(msg);setTimeout(()=>res(null),4000)})}
+function offMsg(t){const e=$("#offState");if(e)e.textContent=t;const f=$("#offInfo");if(f&&t)f.textContent=t}
+async function saveOfflineMap(opts={}){
+  if(offBusy)return;if(!(navigator.serviceWorker&&navigator.serviceWorker.controller)){if(!opts.auto)toast("Para guardar el mapa, abre la app desde su dirección de internet (no como archivo) y recarga una vez.");return}
+  if(navigator.onLine===false){if(!opts.auto)toast("Sin conexión: el mapa se guardará cuando vuelva la cobertura.");return}
+  const keys=offTiles();if(!keys.length){if(!opts.auto)toast("Añade paradas localizadas para saber qué zona guardar.");return}
+  const sig=hoyLocal()+"|"+S.gType+"|"+(roadFallback?"c":"i")+"|"+keys.length+"|"+keys[0]+"|"+keys[keys.length-1];
+  let prev="";try{prev=localStorage.getItem("dc:offmap")||""}catch(_){}
+  if(opts.auto&&prev===sig)return;
+  offBusy=true;try{if(navigator.storage&&navigator.storage.persist)await navigator.storage.persist()}catch(_){}
+  const before=((await swAsk({tipo:"mapa-info"}))||{}).n||0;
+  const urls=offUrls(keys);let done=0,fail=0,i=0;
+  offMsg(`Guardando el mapa para usarlo sin cobertura: 0 de ${urls.length}…`);
+  const worker=async()=>{while(i<urls.length){const u=urls[i++];
+    try{await fetch(u,{mode:"no-cors",credentials:"omit"})}catch(_){fail++}
+    done++;if(done%25===0||done===urls.length)offMsg(`Guardando el mapa para usarlo sin cobertura: ${done} de ${urls.length}…`);
+    if(navigator.onLine===false)break}};
+  await Promise.all(Array.from({length:6},worker));offBusy=false;
+  let info=await swAsk({tipo:"mapa-info"});
+  /* plan B: si el IGN no deja guardar su mapa (sin CORS), se guarda el de CARTO y se usa sin cobertura */
+  if(info&&!roadFallback&&navigator.onLine!==false&&info.n-before<urls.length*0.3&&!opts.carto){
+    const cu=keys.map(k=>{const[z,x,y]=k.split("/").map(Number);return`https://${"abcd"[Math.abs(x+y)%4]}.basemaps.cartocdn.com/rastertiles/voyager/${z}/${x}/${y}.png`});
+    const b2=info.n;i=0;done=0;urls.splice(0,urls.length,...cu);offBusy=true;await Promise.all(Array.from({length:6},worker));offBusy=false;
+    info=await swAsk({tipo:"mapa-info"});if(info&&info.n-b2>=cu.length*0.3){S.offCarto=true;ls.set(K.set,S)}}
+  const ok=navigator.onLine!==false&&fail<urls.length*0.2;
+  if(ok)try{localStorage.setItem("dc:offmap",sig)}catch(_){}
+  offMsg(ok?`Mapa de la ruta guardado para usarlo sin cobertura (${urls.length} trozos${info?", "+info.n+" en total en este dispositivo":""}).`
+    :"No se ha podido guardar todo el mapa (¿se cortó la conexión?). Vuelve a pulsar «Guardar mapa» cuando tengas cobertura.");
+  if(!opts.auto)toast(ok?"Mapa guardado para usarlo sin cobertura":"No se pudo guardar todo el mapa");
+}
+async function offlineInfo(){const f=$("#offInfo");if(!f)return;const info=await swAsk({tipo:"mapa-info"});let mb="";
+  try{if(navigator.storage&&navigator.storage.estimate){const e=await navigator.storage.estimate();mb=` · la app ocupa unos ${Math.round((e.usage||0)/1048576)} MB`}}catch(_){}
+  f.textContent=info?`${info.n} trozos de mapa guardados${mb}.`:"El mapa sin cobertura funciona con la app publicada en internet."}
+$("#offSave").addEventListener("click",()=>saveOfflineMap());
+$("#offSave2").addEventListener("click",()=>saveOfflineMap());
+$("#offClear").addEventListener("click",async()=>{if(!confirm("¿Borrar los mapas guardados para usar sin cobertura? Se volverán a descargar cuando los necesites."))return;
+  await swAsk({tipo:"mapa-borrar"});try{localStorage.removeItem("dc:offmap")}catch(_){}offlineInfo();toast("Mapas guardados borrados")});
+/* al perder la conexión se avisa; al recuperarla, se guarda lo que faltara */
+window.addEventListener("offline",()=>{if(S.offCarto)useCartoRoad();toast("Sin cobertura: el mapa guardado sigue funcionando")});
+if(navigator.onLine===false&&S.offCarto)roadFallback=true;
+window.addEventListener("online",()=>{if(S.offMap!==false&&route.tramos.length)setTimeout(()=>saveOfflineMap({auto:true}),3000)});
+
+function autoOffline(){const c=navigator.connection;if(S.offMap===false||(c&&c.saveData))return;setTimeout(()=>saveOfflineMap({auto:true}),1500)}
 /* ================= jornada nueva: aviso si la ruta abierta es de otro día ================= */
 function checkNewDay(){
   const w=$("#dayWarn"),today=hoyLocal();let skip="";try{skip=localStorage.getItem("dc:dayskip")||""}catch(_){}
